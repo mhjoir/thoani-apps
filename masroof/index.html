@@ -221,6 +221,7 @@ body.has-tabs main{padding-bottom:96px}
     <div class="f"><label for="a-date">التاريخ</label><input type="date" id="a-date"></div>
     <div class="f"><label for="a-note">ملاحظة (اختياري)</label><input type="text" id="a-note" maxlength="80" autocomplete="off"></div>
     <p class="msg warn" id="a-warn" hidden></p>
+    <div class="f" id="a-cover-f" hidden><label for="a-cover">تغطية العجز من بند آخر</label><select id="a-cover"></select></div>
     <div class="row"><button type="submit" class="btn primary" id="a-save">حفظ</button><button type="button" class="btn" id="a-cancel">إلغاء</button></div>
   </form>
 </dialog>
@@ -317,7 +318,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 34;
+  var VERSION = 35;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -935,7 +936,7 @@ body.has-tabs main{padding-bottom:96px}
   $("a-qty").addEventListener("input", function(){ daysManual = false; itemCalc(); });
   $("a-days").addEventListener("input", function(){ daysManual = true; itemCalc(); });
   $("a-packs").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-q]"); if (!b) return; $("a-qty").value = b.dataset.q; daysManual = false; itemCalc(); });
-  function resetWarn(){ forceOver = false; $("a-warn").hidden = true; $("a-save").textContent = editId ? "حفظ التعديل" : "حفظ"; }
+  function resetWarn(){ forceOver = false; $("a-warn").hidden = true; $("a-cover-f").hidden = true; $("a-save").textContent = editId ? "حفظ التعديل" : "حفظ"; }
   function room(){
     var c = cfg.cats.find(function(x){ return x.id === $("a-cat").value; }), d = $("a-date").value || today(), m = d.slice(0,7);
     var s = spentIn(m, c.id), L = limitOf(m, c), old = editId ? expenses.find(function(x){ return x.id === editId; }) : null;
@@ -946,6 +947,7 @@ body.has-tabs main{padding-bottom:96px}
     el.textContent = rest > 0 ? "المتاح في «" + c.name + "» هذا الشهر: " + fmt(rest) + " ريال من " + fmt(L) + "." : "بند «" + c.name + "» استنفد حده (" + fmt(L) + " ريال) هذا الشهر.";
     return rest;
   }
+  $("a-cover").addEventListener("change", function(){ $("a-save").textContent = $("a-cover").value ? "حفظ مع التغطية" : "سجّل مع التجاوز"; });
   $("a-cat").addEventListener("change", function(){ resetWarn(); room(); itemDraw(); });
   $("a-date").addEventListener("change", function(){ resetWarn(); room(); itemCalc(); });
   $("a-amt").addEventListener("input", function(){ resetWarn(); itemCalc(); });
@@ -959,8 +961,13 @@ body.has-tabs main{padding-bottom:96px}
     var rest = room();
     if (amt > rest + 0.005 && !forceOver){
       forceOver = true; w.hidden = false;
-      w.textContent = "هذا المبلغ يتجاوز حد البند بـ " + fmt(amt - Math.max(0, rest)) + " ريال. خفّض المبلغ، أو اضغط «سجّل مع التجاوز» إن كان الصرف لازماً.";
-      $("a-save").textContent = "سجّل مع التجاوز"; return;
+      /* العجز يُغطّى من بند آخر فيه رصيد في شهر المصروف، أو يُسجَّل تجاوزاً */
+      var cm = date.slice(0,7), cid = $("a-cat").value, def = amt - Math.max(0, rest);
+      var src = cfg.cats.filter(function(x){ return x.id !== cid; }).map(function(x){ return {c:x, r:Math.round((limitOf(cm, x) - spentIn(cm, x.id)) * 100) / 100}; }).filter(function(x){ return x.r > 0.005; }).sort(function(a, b){ return b.r - a.r; });
+      $("a-cover").innerHTML = src.map(function(x){ return '<option value="' + esc(x.c.id) + '" data-rest="' + x.r + '">' + esc(x.c.name) + ' — الباقي ' + fmt(x.r) + '</option>'; }).join("") + '<option value="">بلا تغطية: يُسجَّل تجاوزاً على البند</option>';
+      $("a-cover-f").hidden = !src.length;
+      w.textContent = "هذا المبلغ يتجاوز المتاح في البند بـ " + fmt(def) + " ريال. " + (src.length ? "اختر البند الذي يُغطّى منه العجز ثم اضغط «حفظ مع التغطية»، أو خفّض المبلغ." : "لا يوجد بند فيه رصيد للتغطية. خفّض المبلغ، أو اضغط «سجّل مع التجاوز».");
+      $("a-save").textContent = src.length ? "حفظ مع التغطية" : "سجّل مع التجاوز"; return;
     }
     var rec = {cat:$("a-cat").value, amount:Math.round(amt * 100) / 100, date:date, note:$("a-note").value.trim().slice(0, 80), at:new Date().toISOString()};
     var it = rec.cat === ITEM_CAT ? itemOf($("a-item").value) : null, newRate = null;
@@ -978,6 +985,9 @@ body.has-tabs main{padding-bottom:96px}
     var newCatDays = !it && rec.days !== catDays(rec.cat) ? rec.days : null;
     var btn = $("a-save"); btn.disabled = true;
     try {
+      var cvo = !$("a-cover-f").hidden && $("a-cover").value ? $("a-cover").selectedOptions[0] : null, cdef = amt - Math.max(0, rest);
+      if (cvo && cdef > 0.005){ var mv = Math.round(Math.min(cdef, Number(cvo.dataset.rest)) * 100) / 100;
+        if (mv > 0) try { await saveCfg(cleanCfg(Object.assign({}, cfg, {adjs:(cfg.adjs || []).concat([{id:newId(), m:date.slice(0,7), t:"move", from:cvo.value, to:rec.cat, amount:mv, note:"تغطية عجز عند تسجيل مصروف"}])}))); } catch(e){} }
       if (newRate){ var rs = Object.assign({}, cfg.rates || {}); rs[it.id] = newRate; try { await saveCfg(cleanCfg(Object.assign({}, cfg, {rates:rs}))); } catch(e){} }
       if (newCatDays){ var cd = Object.assign({}, cfg.catDays || {}); cd[rec.cat] = newCatDays; try { await saveCfg(cleanCfg(Object.assign({}, cfg, {catDays:cd}))); } catch(e){} }
       if (editId){
