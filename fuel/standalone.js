@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "55";
+var VERSION = "56";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1409,6 +1409,7 @@ msPush();
     "#v2-row .note{margin:10px 0 0;color:var(--m);font-size:13px}#v2-row .acts{display:flex;gap:10px;margin-top:14px}" +
     "#v2-row .acts button{flex:1;font:inherit;font-weight:600;padding:13px;border-radius:14px;cursor:pointer;border:1px solid var(--l);background:transparent;color:var(--i)}#v2-row .acts .pr{background:var(--a);border-color:var(--a);color:#fff}" +
     "@media (prefers-color-scheme:dark){#v2-row .acts .pr{color:#06231f}}" +
+    "#v2-row .acts .dl{color:#B42318;border-color:#F0C4BE}#v2-row .acts .dl.sure{background:#B42318;border-color:#B42318;color:#fff}#v2-row .acts .dl[hidden]{display:none}" +
     "#v2-add{border:1px solid var(--l);border-radius:20px;padding:20px 18px;background:var(--b);color:var(--i);width:min(94vw,440px)}#v2-add::backdrop{background:rgba(0,0,0,.45)}" +
     "#v2-add h2{margin:0;font-size:22px}#v2-add p{margin:0 0 12px;color:var(--m);font-size:14px}#v2-add .os{display:grid;gap:10px}" +
     "#v2-add .o{display:flex;align-items:center;gap:14px;width:100%;text-align:start;font:inherit;color:var(--i);background:var(--s);border:1px solid var(--l);border-radius:16px;padding:14px;cursor:pointer}" +
@@ -1426,7 +1427,7 @@ msPush();
   add.innerHTML = '<h2 id="v2-add-h">إضافة مصروف</h2><p>اختر نوع المصروف</p><div class="os">' + opt("fuel", "fuel", "بنزين", "العداد ثم مبلغ التعبئة") + opt("svc", "tool", "صيانة السيارة", "العداد ثم نوع الصيانة") +
     opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + opt("odo", "gauge", "تحديث العداد", "قراءة العداد فقط، بلا مصروف") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
   var rd = document.createElement("dialog"); rd.id = "v2-row"; rd.setAttribute("aria-labelledby", "v2-row-h");
-  rd.innerHTML = '<h2 id="v2-row-h"></h2><div id="v2-row-b"></div><div class="acts"><button type="button" class="pr" id="v2-row-edit">تعديل</button><button type="button" class="x" id="v2-row-x">إغلاق</button></div>';
+  rd.innerHTML = '<h2 id="v2-row-h"></h2><div id="v2-row-b"></div><div class="acts"><button type="button" class="pr" id="v2-row-edit">تعديل</button><button type="button" class="dl" id="v2-row-del">حذف</button><button type="button" class="x" id="v2-row-x">إغلاق</button></div>';
   document.body.appendChild(v2); document.body.appendChild(nav); document.body.appendChild(add); document.body.appendChild(rd);
 
   /* الرجوع تلقائياً إلى الشاشة السابقة بعد إغلاق نوافذ التسجيل في القسمين القديمين */
@@ -1528,11 +1529,20 @@ msPush();
     if (r.x) h += '<p class="note">مصروف سيارة: تعديله من صفحة السيارة، والمدة تقديرية تُحسب تلقائياً.</p>';
     if (r.r) h = '<p class="sub">' + esc(r.c + " · " + dayName(r.d)) + '</p><ul><li><span>المبلغ المسدَّد</span><b>' + n2(r.a) + ' ريال</b></li></ul><p class="note">سُدّد من المبلغ المحجوز، فلا يُحسب على مصروف هذا الشهر ولا على الحد اليومي. التراجع عنه من بطاقة «مبالغ محجوزة».</p>';
     $("v2-row-h").textContent = r.n; $("v2-row-b").innerHTML = h; $("v2-row-edit").textContent = r.x ? "فتح صفحة السيارة" : r.r ? "فتح صفحة المصروف" : "تعديل";
+    /* الحذف لمصروفات المنزل فقط، وبضغطتين: «حذف» ثم «تأكيد الحذف» */
+    var db = $("v2-row-del"); db.hidden = !!(r.x || r.r); db.className = "dl"; db.textContent = "حذف"; db.disabled = false;
     try { rd.showModal(); } catch(e){ rd.setAttribute("open", ""); }
     rd.scrollTop = 0;
   }
   rd.addEventListener("click", function(ev){
     if (ev.target.closest("#v2-row-x")){ rd.close(); return; }
+    var dl = ev.target.closest("#v2-row-del");
+    if (dl && rowCur){
+      if (dl.className.indexOf("sure") < 0){ dl.className = "dl sure"; dl.textContent = "تأكيد الحذف"; return; }
+      dl.disabled = true; var did = rowCur.id; rd.close(); S.show("exp");
+      inFrame(function(d){ var o = d.querySelector('#log button[data-del="' + did + '"]'); if (!o) return false; o.click(); o.click(); setTimeout(function(){ go("log"); }, 500); return true; });
+      return;
+    }
     if (ev.target.closest("#v2-row-edit") && rowCur){ rd.close(); if (rowCur.x) S.show("car"); else if (rowCur.r) S.show("exp"); else editRow(rowCur.id); }
   });
   function draw(){
