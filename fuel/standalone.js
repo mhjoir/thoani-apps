@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "41";
+var VERSION = "42";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1003,6 +1003,8 @@ msPush();
     "#home-det-dlg li small{display:block;color:var(--muted);font-size:.82rem}" +
     "#home-det-dlg li b{white-space:nowrap;font-variant-numeric:tabular-nums}" +
     "#home-det-dlg li.sum{font-weight:700}" +
+    "#home-det-dlg li{align-items:center}" +
+    "#home-det-dlg .buy{flex:none;font:inherit;font-size:.85rem;font-weight:600;padding:7px 12px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}" +
     "#home-det-dlg li.bad b{color:var(--warn)}" +
     "#home-det-dlg p{margin:10px 0 0;color:var(--muted);font-size:.86rem}" +
     "#home-det-dlg .x{margin-top:14px;width:100%;font:inherit;font-weight:600;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}" +
@@ -1111,7 +1113,7 @@ msPush();
         var ended = stk.filter(function(x){ return x.left <= 0; }).length, soon = stk.filter(function(x){ return x.left > 0 && x.left <= 2; }).length;
         el("hs-stock").innerHTML = stk.length ? n0(stk.length) + ' <small>' + (stk.length === 1 ? "صنف" : stk.length === 2 ? "صنفان" : stk.length > 10 ? "صنفاً" : "أصناف") + '</small>' : "—";
         el("hs-stock").className = "v" + (ended || soon ? " neg" : "");
-        el("hs-stock-u").textContent = !stk.length ? "يظهر بعد تسجيل مشتريات بكمياتها" : (ended ? ended + " انتهى" : "") + (ended && soon ? " · " : "") + (soon ? soon + " ينتهي خلال يومين" : "") + (!ended && !soon ? "كلها كافية حالياً" : "") + " · اضغط للتفاصيل";
+        el("hs-stock-u").textContent = !stk.length ? "يظهر بعد تسجيل مشتريات بكمياتها" : (ended ? ended + " ناقص" : "") + (ended && soon ? " · " : "") + (soon ? soon + " ينتهي خلال يومين" : "") + (!ended && !soon ? "كلها كافية حالياً" : "") + " · اضغط للتفاصيل";
       } else { el("hs-stock").textContent = "—"; el("hs-stock").className = "v"; el("hs-stock-u").textContent = "يظهر بعد تحميل قسم المنزل"; }
       var mb = el("home-mon");
       if (s && s.m === ym){
@@ -1179,6 +1181,23 @@ msPush();
   detDlg.innerHTML = '<h2 id="home-det-h"></h2><div id="home-det-b"></div><button type="button" class="x" id="home-det-x">إغلاق</button>';
   document.body.appendChild(detDlg);
   el("home-det-x").addEventListener("click", function(){ detDlg.close(); });
+  /* «تسجيل شراء» لصنف ناقص: يفتح نافذة المصروف في قسم المنزل والصنف مختار */
+  detDlg.addEventListener("click", function(ev){
+    var b = ev.target.closest("button[data-buy]"); if (!b) return;
+    var id = b.dataset.buy; detDlg.close(); show("exp");
+    var tries = 0;
+    (function go(){
+      var d = null; try { d = frame.contentWindow.document; } catch(e){}
+      var o = d && d.readyState === "complete" ? d.getElementById("add-open") : null;
+      if (!o){ if (++tries < 40) setTimeout(go, 150); return; }
+      o.click();
+      try {
+        var W = frame.contentWindow, c = d.getElementById("a-cat"), it = d.getElementById("a-item");
+        c.value = "food"; c.dispatchEvent(new W.Event("change", {bubbles:true}));
+        it.value = id; it.dispatchEvent(new W.Event("change", {bubbles:true}));
+      } catch(e){}
+    })();
+  });
   function li(a, sub, v, cls){ return '<li' + (cls ? ' class="' + cls + '"' : '') + '><span>' + esc(a) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span><b>' + esc(v) + '</b></li>'; }
   function esc(x){ return String(x).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
   function showDet(kind){
@@ -1204,10 +1223,15 @@ msPush();
     } else if (kind === "stock"){
       t = "مدة كفاية المشتريات";
       var st = s && s.d === det.today && s.stock ? s.stock : [];
-      h = st.length ? '<ul>' + st.map(function(x){
-        var w = x.left <= 0 ? "انتهى" : x.left === 1 ? "آخر يوم" : x.left === 2 ? "باقي يومان" : "باقي " + x.left + (x.left > 10 ? " يوماً" : " أيام");
-        return li(x.n + (x.q ? " " + x.q : ""), (x.car ? "بتاريخ " : "اشتُري ") + dm(x.d) + (x.car ? " · تقديراً حتى " : " · يكفي حتى ") + dm(x.end), w, x.left <= 2 ? "bad" : ""); }).join("") + '</ul>' +
-        '<p>آخر شراء لكل صنف ومتى ينتهي بحسب مدة كفايته. البنزين والصيانة تقديرية.</p>' : '<p>لا توجد مشتريات مسجّلة بكمياتها بعد. سجّل مصروفاً في «الطعام ومستلزمات البيت» واختر الصنف والكمية.</p>';
+      var row = function(x, buy){
+        var w = x.left <= 0 ? (x.left === 0 ? "انتهى أمس" : "انتهى منذ " + (-x.left + 1 === 2 ? "يومين" : (-x.left + 1) + (-x.left + 1 > 10 ? " يوماً" : " أيام"))) : x.left === 1 ? "آخر يوم" : x.left === 2 ? "باقي يومان" : "باقي " + x.left + (x.left > 10 ? " يوماً" : " أيام");
+        return '<li' + (x.left <= 2 ? ' class="bad"' : '') + '><span>' + esc(x.n + (x.q ? " " + x.q : "")) + '<small>' + esc((x.car ? "بتاريخ " : "اشتُري ") + dm(x.d) + (x.car ? " · تقديراً حتى " : " · يكفي حتى ") + dm(x.end)) + '</small></span>' +
+          (buy && x.id ? '<button type="button" class="buy" data-buy="' + esc(x.id) + '">تسجيل شراء</button>' : '<b>' + esc(w) + '</b>') + '</li>';
+      };
+      var have = st.filter(function(x){ return x.left > 0; }), miss = st.filter(function(x){ return x.left <= 0; }).sort(function(a, b){ return b.left - a.left; });
+      h = st.length ? '<h2 style="font-size:1.05rem">المتوفر (' + have.length + ')</h2>' + (have.length ? '<ul>' + have.map(function(x){ return row(x, false); }).join("") + '</ul>' : '<p>لا يوجد صنف متوفر حالياً.</p>') +
+        '<h2 style="margin-top:16px;font-size:1.05rem">الناقص — قائمة الشراء (' + miss.length + ')</h2>' + (miss.length ? '<ul>' + miss.map(function(x){ return row(x, true); }).join("") + '</ul>' : '<p>لا يوجد صنف ناقص.</p>') +
+        '<p>الصنف ينزل إلى قائمة الناقص عند انتهاء مدة كفايته، ويعود إلى المتوفر عند تسجيل شرائه. البنزين والصيانة تقديرية.</p>' : '<p>لا توجد مشتريات مسجّلة بكمياتها بعد. سجّل مصروفاً في «الطعام ومستلزمات البيت» واختر الصنف والكمية.</p>';
     } else if (kind === "fuel"){
       t = "تعبئات البنزين هذا الشهر";
       var f = det.fills || [], tot = 0, lit = 0;
