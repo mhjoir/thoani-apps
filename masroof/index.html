@@ -265,7 +265,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 20;
+  var VERSION = 21;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -317,6 +317,8 @@ body.has-tabs main{padding-bottom:96px}
     {id:"gas", n:"غاز الطبخ", u:"أسطوانة", r:1/30, p:[1], g:"مستلزمات البيت"}
   ];
   var ITEM_CAT = "food";
+  /* السلع الرئيسية: تظهر في قائمة الناقص حتى لو لم يُسجَّل شراؤها من قبل */
+  var MAIN = ["rice","chicken","meat","eggs","milk","bread","flour","oil","sugar","salt","tea","veg","water","detergent","dish","tissue"];
   function itemOf(id){ return CATALOG.find(function(x){ return x.id === id; }) || null; }
   function rateOf(it){ var r = cfg && cfg.rates && Number(cfg.rates[it.id]); return r > 0 ? r : it.r; }
   function addDays(d, n){ var t = dateOf(d); t.setDate(t.getDate() + n); return t.getFullYear() + "-" + pad(t.getMonth() + 1) + "-" + pad(t.getDate()); }
@@ -671,8 +673,12 @@ body.has-tabs main{padding-bottom:96px}
     var rows = Object.keys(latest).map(function(k){ var e = latest[k], end = addDays(e.date, Math.round(e.days) - 1); return {it:e.ext ? {n:e.lbl, u:""} : itemOf(k), e:e, end:end, left:dayDiff(td, end) + 1, car:!!e.ext}; })
       .filter(function(x){ return x.left > -60; }).sort(function(a, b){ return a.left - b.left; });
     stockRows = rows.map(function(x){ return {id:x.car ? "" : x.e.item, n:x.it.n, q:x.e.qty ? qtyFmt(x.e.qty) + " " + (x.e.unit || x.it.u) : "", d:x.e.date, end:x.end, left:x.left, car:x.car ? 1 : 0}; });
-    $("stock-card").hidden = !rows.length;
-    $("stock").innerHTML = rows.map(function(x){
+    var never = MAIN.filter(function(id){ return !latest[id] && !rows.some(function(x){ return !x.car && x.e.item === id; }); }).map(itemOf).filter(Boolean);
+    /* صنف رئيسي اشتُري قديماً وخرج من القائمة (أكثر من 60 يوماً) يُعامل كغير مشترى */
+    MAIN.forEach(function(id){ if (latest[id] && !rows.some(function(x){ return !x.car && x.e.item === id; }) && itemOf(id)) never.push(itemOf(id)); });
+    stockRows = stockRows.concat(never.map(function(it){ return {id:it.id, n:it.n, q:"", d:"", end:"", left:-999, car:0, nv:1}; }));
+    $("stock-card").hidden = !rows.length && !expenses.length;
+    $("stock").innerHTML = never.map(function(it){ return '<li><span class="what"><b>' + esc(it.n) + '</b><span>سلعة رئيسية · لم يُسجَّل شراؤها</span></span><span class="pill over">ناقص</span></li>'; }).join("") + rows.map(function(x){
       var st = x.left <= 0 ? '<span class="pill over">انتهى</span>' : x.left <= 2 ? '<span class="pill near">' + (x.left === 1 ? "آخر يوم" : "باقي يومان") + '</span>' : '<span class="pill ok">باقي ' + daysWord(x.left) + '</span>';
       return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>' + (x.car ? 'بتاريخ ' : 'اشتُري ') + esc(dayFmt.format(dateOf(x.e.date))) + ' · ' + (x.car ? 'تقديراً حتى ' : 'يكفي حتى ') + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + '</li>';
     }).join("");

@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "42";
+var VERSION = "43";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1111,9 +1111,10 @@ msPush();
       var stk = det.s && det.s.d === tdy && det.s.stock ? det.s.stock : null;
       if (stk){
         var ended = stk.filter(function(x){ return x.left <= 0; }).length, soon = stk.filter(function(x){ return x.left > 0 && x.left <= 2; }).length;
-        el("hs-stock").innerHTML = stk.length ? n0(stk.length) + ' <small>' + (stk.length === 1 ? "صنف" : stk.length === 2 ? "صنفان" : stk.length > 10 ? "صنفاً" : "أصناف") + '</small>' : "—";
+        var hv = stk.filter(function(x){ return x.left > 0; }).length;
+        el("hs-stock").innerHTML = stk.length ? n0(hv) + ' <small>متوفر</small> · ' + n0(ended) + ' <small>ناقص</small>' : "—";
         el("hs-stock").className = "v" + (ended || soon ? " neg" : "");
-        el("hs-stock-u").textContent = !stk.length ? "يظهر بعد تسجيل مشتريات بكمياتها" : (ended ? ended + " ناقص" : "") + (ended && soon ? " · " : "") + (soon ? soon + " ينتهي خلال يومين" : "") + (!ended && !soon ? "كلها كافية حالياً" : "") + " · اضغط للتفاصيل";
+        el("hs-stock-u").textContent = !stk.length ? "يظهر بعد تسجيل مشتريات بكمياتها" : (soon ? soon + " ينتهي خلال يومين" : ended ? "يوجد ناقص للشراء" : "كلها كافية حالياً") + " · اضغط للتفاصيل";
       } else { el("hs-stock").textContent = "—"; el("hs-stock").className = "v"; el("hs-stock-u").textContent = "يظهر بعد تحميل قسم المنزل"; }
       var mb = el("home-mon");
       if (s && s.m === ym){
@@ -1225,7 +1226,7 @@ msPush();
       var st = s && s.d === det.today && s.stock ? s.stock : [];
       var row = function(x, buy){
         var w = x.left <= 0 ? (x.left === 0 ? "انتهى أمس" : "انتهى منذ " + (-x.left + 1 === 2 ? "يومين" : (-x.left + 1) + (-x.left + 1 > 10 ? " يوماً" : " أيام"))) : x.left === 1 ? "آخر يوم" : x.left === 2 ? "باقي يومان" : "باقي " + x.left + (x.left > 10 ? " يوماً" : " أيام");
-        return '<li' + (x.left <= 2 ? ' class="bad"' : '') + '><span>' + esc(x.n + (x.q ? " " + x.q : "")) + '<small>' + esc((x.car ? "بتاريخ " : "اشتُري ") + dm(x.d) + (x.car ? " · تقديراً حتى " : " · يكفي حتى ") + dm(x.end)) + '</small></span>' +
+        return '<li' + (x.left <= 2 ? ' class="bad"' : '') + '><span>' + esc(x.n + (x.q ? " " + x.q : "")) + '<small>' + esc(x.nv ? "سلعة رئيسية · لم يُسجَّل شراؤها" : (x.car ? "بتاريخ " : "اشتُري ") + dm(x.d) + (x.car ? " · تقديراً حتى " : " · يكفي حتى ") + dm(x.end)) + '</small></span>' +
           (buy && x.id ? '<button type="button" class="buy" data-buy="' + esc(x.id) + '">تسجيل شراء</button>' : '<b>' + esc(w) + '</b>') + '</li>';
       };
       var have = st.filter(function(x){ return x.left > 0; }), miss = st.filter(function(x){ return x.left <= 0; }).sort(function(a, b){ return b.left - a.left; });
