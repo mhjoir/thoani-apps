@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "50";
+var VERSION = "51";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1455,6 +1455,12 @@ msPush();
     var inc = Number(s.income) || 0, ms = Number(s.spent) || 0, ml = inc - ms, mp = inc > 0 ? Math.min(100, ms / inc * 100) : 0, mo = ml < -0.005;
     h += '<button type="button" class="card" data-det="mon"><div class="hd"><b>هذا الشهر</b><span class="sub">باقي ' + days(s.daysLeft) + '</span></div><div class="pb' + (mo ? " over" : "") + '"><i data-w="' + mp + '"></i></div>' +
       '<div class="two"><span>المصروف <b>' + n0(ms) + '</b></span><span>' + (mo ? "تجاوز" : "المتاح") + ' <b>' + n0(Math.abs(ml)) + '</b> من ' + n0(inc) + '</span></div></button>';
+    /* المحجوز: قسط الإيجار وسداد الديون وما شابههما */
+    var rs = s.res || [];
+    if (rs.length) h += '<button type="button" class="card g2" data-res="1"><div class="hd"><b>المحجوز</b><span class="lnk">إدارة</span></div>' + rs.map(function(r){
+      var sub = r.e === 1 ? n0(r.a) + " شهرياً" + (r.sw ? " + فائض الأيام" : "") : "من " + n0(r.a) + " · يحل " + S.dm(r.due);
+      if (!(r.per > 0) && !(r.saved > 0)) sub = "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + (r.due ? " · يحل " + S.dm(r.due) : r.sw ? " · فائض الأيام من الآن" : "");
+      return '<div class="row"><span class="t"><b>' + esc(r.n) + '</b><small>' + esc(sub) + '</small></span>' + (r.now && r.e !== 1 ? '<span class="pill w">حلّ موعده</span>' : '') + '<span class="v">' + n0(r.saved) + '</span></div>'; }).join("") + '</button>';
     var st = s.stock || [], miss = st.filter(function(x){ return x.left <= 0; }).length, fuel = st.find(function(x){ return x.car && x.n === "بنزين"; });
     if (miss) h += '<button type="button" class="al w" data-go="shop">' + ico(I.alert) + '<span>' + (miss === 1 ? "سلعة واحدة ناقصة" : miss === 2 ? "سلعتان ناقصتان" : miss + (miss > 10 ? " سلعة ناقصة" : " سلع ناقصة")) + ' للشراء</span>' + ico(I.chev, 18) + '</button>';
     /* تنبيه يومي: من 4:30 عصراً حتى تُسجَّل قراءة العداد يتحول سطر البنزين إلى طلب تسجيل الممشى */
@@ -1481,7 +1487,7 @@ msPush();
     if (!rows.length) return h + '<div class="card"><p class="sub">لا توجد مصروفات مسجّلة.</p></div>';
     var by = {}, ord = []; rows.forEach(function(r){ if (!by[r.d]){ by[r.d] = []; ord.push(r.d); } by[r.d].push(r); });
     ord.forEach(function(d){
-      var tot = by[d].reduce(function(a, r){ return a + r.a; }, 0);
+      var tot = by[d].reduce(function(a, r){ return a + (r.r ? 0 : r.a); }, 0);
       h += '<div class="card g2"><span class="gh">' + esc(dayName(d)) + ' · ' + n2(tot) + ' ريال</span>' + by[d].map(function(r){
         return '<button type="button" class="row" data-row="' + esc(r.id) + '" data-x="' + r.x + '"><span class="sq">' + ico(r.x ? (r.n === "بنزين" ? I.fuel : I.tool) : (r.k > 1 || r.c.indexOf("الطعام") === 0 ? I.bag : I.coin), 20) + '</span><span class="t"><b>' + esc(r.n) + '</b><small>' + esc((r.x ? "السيارة" : r.c) + (r.k > 1 ? " · تكفي " + days(r.k) : "")) + '</small></span><span class="v">' + n2(r.a) + '</span></button>'; }).join("") + '</div>';
     });
@@ -1512,13 +1518,14 @@ msPush();
       if (r.k > span) h += '<p class="note">المدة (' + days(r.k) + ') تمتد بعد نهاية الشهر، فوُزّع المبلغ على الأيام الباقية من هذا الشهر فقط لأنه دُفع من ميزانيته.</p>';
     } else h += '<p class="note">هذا المصروف محسوب كاملاً على يوم دفعه.</p>';
     if (r.x) h += '<p class="note">مصروف سيارة: تعديله من صفحة السيارة، والمدة تقديرية تُحسب تلقائياً.</p>';
-    $("v2-row-h").textContent = r.n; $("v2-row-b").innerHTML = h; $("v2-row-edit").textContent = r.x ? "فتح صفحة السيارة" : "تعديل";
+    if (r.r) h = '<p class="sub">' + esc(r.c + " · " + dayName(r.d)) + '</p><ul><li><span>المبلغ المسدَّد</span><b>' + n2(r.a) + ' ريال</b></li></ul><p class="note">سُدّد من المبلغ المحجوز، فلا يُحسب على مصروف هذا الشهر ولا على الحد اليومي. التراجع عنه من بطاقة «مبالغ محجوزة».</p>';
+    $("v2-row-h").textContent = r.n; $("v2-row-b").innerHTML = h; $("v2-row-edit").textContent = r.x ? "فتح صفحة السيارة" : r.r ? "فتح صفحة المصروف" : "تعديل";
     try { rd.showModal(); } catch(e){ rd.setAttribute("open", ""); }
     rd.scrollTop = 0;
   }
   rd.addEventListener("click", function(ev){
     if (ev.target.closest("#v2-row-x")){ rd.close(); return; }
-    if (ev.target.closest("#v2-row-edit") && rowCur){ rd.close(); if (rowCur.x) S.show("car"); else editRow(rowCur.id); }
+    if (ev.target.closest("#v2-row-edit") && rowCur){ rd.close(); if (rowCur.x) S.show("car"); else if (rowCur.r) S.show("exp"); else editRow(rowCur.id); }
   });
   function draw(){
     $("v2-in").innerHTML = cur === "shop" ? rShop() : cur === "log" ? rLog() : cur === "more" ? rMore() : rHome();
@@ -1546,6 +1553,7 @@ msPush();
   v2.addEventListener("click", function(ev){
     var b = ev.target.closest("button"); if (!b) return;
     if (b.dataset.odo){ odoGo(); return; }
+    if (b.dataset.res){ S.show("exp"); inFrame(function(d){ var c = d.getElementById("res-card"); if (!c) return false; c.scrollIntoView({block:"start"}); return true; }); return; }
     if (b.dataset.det){ S.showDet(b.dataset.det); return; }
     if (b.dataset.go){ go(b.dataset.go); return; }
     if (b.dataset.sync){ syncGo(); return; }
