@@ -88,6 +88,7 @@ button{cursor:pointer}
 .legend i{display:inline-block;width:2px;height:14px;background:var(--ink);opacity:.55}
 .log{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column}
 .log li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.log .acts{display:flex;flex-direction:column;gap:5px;flex:none}
 .log .what{flex:1;min-width:0;display:flex;flex-direction:column}
 .log .what span{color:var(--muted);font-size:.85rem;overflow-wrap:anywhere}
 .log .amt{font-weight:600;white-space:nowrap}
@@ -264,7 +265,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 17;
+  var VERSION = 18;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -631,7 +632,7 @@ body.has-tabs main{padding-bottom:96px}
     $("log").innerHTML = rows.map(function(e){
       var c = cats.find(function(x){ return x.id === e.cat; });
       return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") : "") + (e.days > 1 ? " · " + (e.item || e.ext ? "تكفي " : "يغطي ") + daysWord(e.days) : "") + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
-        '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button>') + '</li>';
+        '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<span class="acts"><button type="button" class="btn sm" data-edit="' + esc(e.id) + '">تعديل</button><button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button></span>') + '</li>';
     }).join("");
   }
   /* ملخص الشهر الحالي للصفحة الرئيسية في «دفتر المصروف»: المصروف والباقي */
@@ -689,7 +690,19 @@ body.has-tabs main{padding-bottom:96px}
   });
 
   /* ---------- تسجيل مصروف ---------- */
+  var editId = null;
+  function openEdit(id){
+    var e = expenses.find(function(x){ return x.id === id; }); if (!e) return;
+    openAdd(e.cat);
+    editId = id; $("add-h").textContent = "تعديل مصروف"; $("a-save").textContent = "حفظ التعديل";
+    if (cfg.cats.some(function(c){ return c.id === e.cat; })) $("a-cat").value = e.cat;
+    $("a-date").value = e.date; $("a-amt").value = e.amount; $("a-note").value = e.note || "";
+    $("a-item").value = e.item && itemOf(e.item) && e.cat === ITEM_CAT ? e.item : ""; itemDraw(false);
+    if (e.qty) $("a-qty").value = e.qty;
+    daysManual = true; $("a-days").value = e.days >= 1 ? Math.round(e.days) : 1; itemCalc(); room();
+  }
   function openAdd(catId){
+    editId = null; $("add-h").textContent = "تسجيل مصروف";
     if (!cfg || !cfg.cats.length){ openCfg(); return; }
     if (catId && carLocked(catId)){ open($("car-dlg")); return; }
     $("a-cat").innerHTML = cfg.cats.filter(function(c){ return !carLocked(c.id); }).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join("");
@@ -727,10 +740,13 @@ body.has-tabs main{padding-bottom:96px}
   $("a-qty").addEventListener("input", function(){ daysManual = false; itemCalc(); });
   $("a-days").addEventListener("input", function(){ daysManual = true; itemCalc(); });
   $("a-packs").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-q]"); if (!b) return; $("a-qty").value = b.dataset.q; daysManual = false; itemCalc(); });
-  function resetWarn(){ forceOver = false; $("a-warn").hidden = true; $("a-save").textContent = "حفظ"; }
+  function resetWarn(){ forceOver = false; $("a-warn").hidden = true; $("a-save").textContent = editId ? "حفظ التعديل" : "حفظ"; }
   function room(){
     var c = cfg.cats.find(function(x){ return x.id === $("a-cat").value; }), d = $("a-date").value || today(), m = d.slice(0,7);
-    var s = spentIn(m, c.id), L = limitOf(m, c), rest = L - s, el = $("a-room");
+    var s = spentIn(m, c.id), L = limitOf(m, c), old = editId ? expenses.find(function(x){ return x.id === editId; }) : null;
+    /* عند التعديل لا يُحسب المبلغ القديم للمصروف نفسه ضمن المصروف من البند */
+    if (old && old.cat === c.id && old.date.slice(0,7) === m && (!eff(m).from || old.date >= eff(m).from)) s -= old.amount;
+    var rest = L - s, el = $("a-room");
     el.hidden = false; el.className = "msg " + (rest > 0 ? "info" : "warn");
     el.textContent = rest > 0 ? "المتاح في «" + c.name + "» هذا الشهر: " + fmt(rest) + " ريال من " + fmt(L) + "." : "بند «" + c.name + "» استنفد حده (" + fmt(L) + " ريال) هذا الشهر.";
     return rest;
@@ -767,7 +783,11 @@ body.has-tabs main{padding-bottom:96px}
     try {
       if (newRate){ var rs = Object.assign({}, cfg.rates || {}); rs[it.id] = newRate; try { await saveCfg(cleanCfg(Object.assign({}, cfg, {rates:rs}))); } catch(e){} }
       if (newCatDays){ var cd = Object.assign({}, cfg.catDays || {}); cd[rec.cat] = newCatDays; try { await saveCfg(cleanCfg(Object.assign({}, cfg, {catDays:cd}))); } catch(e){} }
-      if (db) await db.collection("expenses").doc().set(rec);
+      if (editId){
+        if (db) await db.doc("expenses/" + editId).set(rec);
+        else { var ix = expenses.findIndex(function(x){ return x.id === editId; }); if (ix >= 0) expenses[ix] = Object.assign({id:editId}, rec); saveLocal(); }
+      }
+      else if (db) await db.collection("expenses").doc().set(rec);
       else { expenses.push(Object.assign({id:newId()}, rec)); saveLocal(); }
       month = date.slice(0,7); $("add-dlg").close(); render();
     } catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
@@ -776,6 +796,7 @@ body.has-tabs main{padding-bottom:96px}
   $("a-cancel").addEventListener("click", function(){ $("add-dlg").close(); });
   $("add-open").addEventListener("click", function(){ openAdd(null); });
   $("cats").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-cat]"); if (b) openAdd(b.dataset.cat); });
+  $("log").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-edit]"); if (b) openEdit(b.dataset.edit); });
   $("log").addEventListener("click", async function(ev){
     var b = ev.target.closest("button[data-del]"); if (!b) return;
     if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد الحذف"; return; }
