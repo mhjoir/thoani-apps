@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "46";
+var VERSION = "47";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1381,6 +1381,14 @@ msPush();
     "#v2-nav button{font:inherit;border:0;background:transparent;color:var(--m);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;min-height:52px;cursor:pointer}" +
     "#v2-nav button[aria-current=page]{color:var(--a);font-weight:700}" +
     "#v2-nav button.plus{width:60px;height:60px;min-height:60px;margin:-26px auto 0;border-radius:30px;border:4px solid var(--b);background:var(--a);color:#fff}" +
+    "#v2-row{--i:#14213D;--m:#5B6577;--b:#F3F5F8;--s:#fff;--l:#DDE2EA;--a:#0B6E63;--ab:#E3F2EF;font-family:'IBM Plex Sans Arabic',system-ui,-apple-system,sans-serif;border:1px solid var(--l);border-radius:20px;padding:20px 18px;background:var(--s);color:var(--i);width:min(94vw,440px);max-height:86vh}" +
+    "@media (prefers-color-scheme:dark){#v2-row{--i:#E8ECF2;--m:#9AA6B8;--b:#10151C;--s:#19202A;--l:#2A3441;--a:#4CC7B5;--ab:#143630}}" +
+    "#v2-row::backdrop{background:rgba(0,0,0,.45)}#v2-row h2{margin:0 0 4px;font-size:20px}#v2-row .sub{margin:0 0 10px;color:var(--m);font-size:14px}" +
+    "#v2-row ul{list-style:none;margin:0;padding:0}#v2-row li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--l);font-variant-numeric:tabular-nums}#v2-row li:last-child{border-bottom:0}" +
+    "#v2-row li.now{font-weight:700;color:var(--a)}#v2-row li.past{color:var(--m)}#v2-row li.sum{font-weight:700}#v2-row h3{margin:14px 0 2px;font-size:15px;color:var(--m)}" +
+    "#v2-row .note{margin:10px 0 0;color:var(--m);font-size:13px}#v2-row .acts{display:flex;gap:10px;margin-top:14px}" +
+    "#v2-row .acts button{flex:1;font:inherit;font-weight:600;padding:13px;border-radius:14px;cursor:pointer;border:1px solid var(--l);background:transparent;color:var(--i)}#v2-row .acts .pr{background:var(--a);border-color:var(--a);color:#fff}" +
+    "@media (prefers-color-scheme:dark){#v2-row .acts .pr{color:#06231f}}" +
     "#v2-add{border:1px solid var(--l);border-radius:20px;padding:20px 18px;background:var(--b);color:var(--i);width:min(94vw,440px)}#v2-add::backdrop{background:rgba(0,0,0,.45)}" +
     "#v2-add h2{margin:0;font-size:22px}#v2-add p{margin:0 0 12px;color:var(--m);font-size:14px}#v2-add .os{display:grid;gap:10px}" +
     "#v2-add .o{display:flex;align-items:center;gap:14px;width:100%;text-align:start;font:inherit;color:var(--i);background:var(--s);border:1px solid var(--l);border-radius:16px;padding:14px;cursor:pointer}" +
@@ -1397,7 +1405,9 @@ msPush();
   function opt(k, ic, t, s){ return '<button type="button" class="o" data-add="' + k + '"><span class="sq">' + ico(I[ic], 24) + '</span><span class="t"><b>' + t + '</b><small>' + s + '</small></span>' + ico(I.chev, 18) + '</button>'; }
   add.innerHTML = '<h2 id="v2-add-h">إضافة مصروف</h2><p>اختر نوع المصروف</p><div class="os">' + opt("fuel", "fuel", "بنزين", "العداد ثم مبلغ التعبئة") + opt("svc", "tool", "صيانة السيارة", "العداد ثم نوع الصيانة") +
     opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + opt("odo", "gauge", "تحديث العداد", "قراءة العداد فقط، بلا مصروف") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
-  document.body.appendChild(v2); document.body.appendChild(nav); document.body.appendChild(add);
+  var rd = document.createElement("dialog"); rd.id = "v2-row"; rd.setAttribute("aria-labelledby", "v2-row-h");
+  rd.innerHTML = '<h2 id="v2-row-h"></h2><div id="v2-row-b"></div><div class="acts"><button type="button" class="pr" id="v2-row-edit">تعديل</button><button type="button" class="x" id="v2-row-x">إغلاق</button></div>';
+  document.body.appendChild(v2); document.body.appendChild(nav); document.body.appendChild(add); document.body.appendChild(rd);
 
   /* الرجوع تلقائياً إلى الشاشة السابقة بعد إغلاق نوافذ التسجيل في القسمين القديمين */
   var watch = null;
@@ -1460,7 +1470,7 @@ msPush();
       h += '<div class="card g2"><span class="gh">' + esc(dayName(d)) + ' · ' + n2(tot) + ' ريال</span>' + by[d].map(function(r){
         return '<button type="button" class="row" data-row="' + esc(r.id) + '" data-x="' + r.x + '"><span class="sq">' + ico(r.x ? (r.n === "بنزين" ? I.fuel : I.tool) : (r.k > 1 || r.c.indexOf("الطعام") === 0 ? I.bag : I.coin), 20) + '</span><span class="t"><b>' + esc(r.n) + '</b><small>' + esc((r.x ? "السيارة" : r.c) + (r.k > 1 ? " · تكفي " + days(r.k) : "")) + '</small></span><span class="v">' + n2(r.a) + '</span></button>'; }).join("") + '</div>';
     });
-    return h + '<p class="note">اضغط أي مصروف للتعديل أو الحذف</p>';
+    return h + '<p class="note">اضغط أي مصروف لعرض أيام توزيعه ثم تعديله</p>';
   }
   function rMore(){
     var s = sum();
@@ -1469,6 +1479,31 @@ msPush();
       '<div class="card g0">' + m("sync", "cloud", "النسخ الاحتياطي", lsGet(SYNCKEY) ? "مفعّل: بياناتك تُحفظ على الخادم" : "غير مفعّل: البيانات على هذا الجهاز فقط") + '</div>' +
       '<p class="note">دفتر المصروف · النسخة ' + esc(VERSION) + (s && s.ver ? " · المنزل " + esc(s.ver) : "") + '</p>';
   }
+  /* تفاصيل مصروف من السجل: الأيام التي وُزّع عليها ونصيب كل يوم، ثم التعديل */
+  var rowCur = null;
+  function rowDet(id){
+    var s = sum(), r = s ? (s.rows || []).find(function(x){ return String(x.id) === String(id); }) : null; if (!r) return;
+    rowCur = r;
+    var p = r.d.split("-"), last = new Date(Number(p[0]), Number(p[1]), 0).getDate(), toEnd = last - Number(p[2]) + 1, span = r.k > 1 ? Math.max(1, Math.min(r.k, toEnd)) : 1, share = r.a / span, t = todayS();
+    var h = '<p class="sub">' + esc((r.x ? "السيارة" : r.c) + " · " + dayName(r.d)) + '</p><ul><li><span>المبلغ المدفوع</span><b>' + n2(r.a) + ' ريال</b></li><li><span>يغطي</span><b>' + days(r.k) + '</b></li>' +
+      (span > 1 ? '<li><span>نصيب اليوم الواحد</span><b>' + n2(Math.round(share * 100) / 100) + ' ريال</b></li>' : '') + '</ul>';
+    if (span > 1){
+      h += '<h3>الأيام الموزَّع عليها (' + span + ')</h3><ul>';
+      for (var i = 0; i < span; i++){
+        var dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + i), ds = dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+        h += '<li class="' + (ds === t ? "now" : ds < t ? "past" : "") + '"><span>' + esc(dayName(ds)) + (ds === t ? "" : "") + '</span><span>' + n2(Math.round(share * 100) / 100) + '</span></li>';
+      }
+      h += '<li class="sum"><span>المجموع</span><span>' + n2(r.a) + '</span></li></ul>';
+      if (r.k > span) h += '<p class="note">المدة (' + days(r.k) + ') تمتد بعد نهاية الشهر، فوُزّع المبلغ على الأيام الباقية من هذا الشهر فقط لأنه دُفع من ميزانيته.</p>';
+    } else h += '<p class="note">هذا المصروف محسوب كاملاً على يوم دفعه.</p>';
+    if (r.x) h += '<p class="note">مصروف سيارة: تعديله من صفحة السيارة، والمدة تقديرية تُحسب تلقائياً.</p>';
+    $("v2-row-h").textContent = r.n; $("v2-row-b").innerHTML = h; $("v2-row-edit").textContent = r.x ? "فتح صفحة السيارة" : "تعديل";
+    try { rd.showModal(); } catch(e){ rd.setAttribute("open", ""); }
+  }
+  rd.addEventListener("click", function(ev){
+    if (ev.target.closest("#v2-row-x")){ rd.close(); return; }
+    if (ev.target.closest("#v2-row-edit") && rowCur){ rd.close(); if (rowCur.x) S.show("car"); else editRow(rowCur.id); }
+  });
   function draw(){
     $("v2-in").innerHTML = cur === "shop" ? rShop() : cur === "log" ? rLog() : cur === "more" ? rMore() : rHome();
     /* العرض يُضبط بالسكربت لأن سياسة أمان الصفحة تمنع الأنماط المضمّنة */
@@ -1497,7 +1532,7 @@ msPush();
     if (b.dataset.buy){ addHome("food", b.dataset.buy); return; }
     if (b.dataset.have){ haveItem(b.dataset.have); return; }
     if (b.dataset.f){ logF = b.dataset.f; draw(); return; }
-    if (b.dataset.row){ if (b.dataset.x === "1") S.show("car"); else editRow(b.dataset.row); return; }
+    if (b.dataset.row){ rowDet(b.dataset.row); return; }
     if (b.dataset.more){ var k = b.dataset.more; if (k === "sync") syncGo(); else S.show(k); }
   });
   window.addEventListener("storage", function(ev){ if (ev.key === "masroof-summary" && !v2.hidden) draw(); });
