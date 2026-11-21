@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مصروف البيت</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="مصروف البيت">
+<meta name="theme-color" content="#0f5f58">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* الفكرة: دفتر حساب شهري. شريط واحد لكل بند يقارن المصروف بالحد، وعلامة رأسية تبيّن أين وصل الشهر. */
+:root{
+  --paper:#f3f5f4; --surface:#ffffff; --ink:#14201d; --muted:#5d6b67; --line:#d9dfdc;
+  --accent:#0f5f58; --accent-ink:#ffffff; --track:#e6ebe9;
+  --good:#1f7a4d; --warn:#b26a00; --over:#b3261e;
+  --good-bg:#e3f2ea; --warn-bg:#fbefd9; --over-bg:#fbe4e2;
+  --font-display:"Reem Kufi","IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;
+  --font-body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0f1615; --surface:#182220; --ink:#e8efec; --muted:#9aaaa5; --line:#2b3a37;
+    --accent:#5fc7b8; --accent-ink:#06211e; --track:#24322f;
+    --good:#6fd39b; --warn:#f0b354; --over:#ff8a80;
+    --good-bg:#16332a; --warn-bg:#3a2c12; --over-bg:#3d1c1a;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0f1615; --surface:#182220; --ink:#e8efec; --muted:#9aaaa5; --line:#2b3a37;
+  --accent:#5fc7b8; --accent-ink:#06211e; --track:#24322f;
+  --good:#6fd39b; --warn:#f0b354; --over:#ff8a80;
+  --good-bg:#16332a; --warn-bg:#3a2c12; --over-bg:#3d1c1a;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.6;font-variant-numeric:tabular-nums}
+main{max-width:640px;margin:0 auto;padding:20px 16px 48px;display:flex;flex-direction:column;gap:16px}
+h1,h2{font-family:var(--font-display);margin:0;text-wrap:balance;line-height:1.3}
+h1{font-size:1.7rem} h2{font-size:1.15rem}
+h1 small{font-family:var(--font-body);font-size:.8rem;font-weight:500;color:var(--muted)}
+.foot{margin:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:.88rem}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+[hidden]{display:none !important}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.month{display:flex;align-items:center;gap:6px}
+.month b{min-width:8.5em;text-align:center;font-weight:600}
+.icon{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:1.2rem;line-height:1}
+.note{margin:0;padding:10px 12px;border-radius:10px;background:var(--warn-bg);color:var(--ink);font-size:.9rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px}
+.sum{display:flex;flex-direction:column;gap:10px}
+.sum .k{color:var(--muted);font-size:.9rem}
+.sum .big{font-family:var(--font-display);font-size:2.6rem;line-height:1.15;font-weight:700}
+.sum .big small{font-family:var(--font-body);font-size:1rem;font-weight:500;color:var(--muted)}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fact{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;min-width:0}
+.fact span{color:var(--muted);font-size:.8rem} .fact b{font-weight:600}
+.bar{position:relative;height:12px;border-radius:999px;background:var(--track);overflow:hidden}
+.bar i{position:absolute;inset-block:0;inset-inline-start:0;border-radius:999px;background:var(--good)}
+.bar.near i{background:var(--warn)} .bar.over i{background:var(--over)}
+.barwrap{position:relative;display:block}
+.tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55;border-radius:2px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 16px;font-weight:600;min-height:44px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.wide{width:100%;font-size:1.05rem;min-height:52px}
+.btn.danger{color:var(--over)}
+.btn.sm{padding:6px 12px;min-height:36px;font-size:.9rem;border-radius:10px}
+.head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.cats{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.cat{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--line);border-radius:12px;background:transparent;text-align:start;width:100%}
+.cat:hover{border-color:var(--accent)}
+.cat .r1{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.cat .name{font-weight:600}
+.cat .r2{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:.88rem;flex-wrap:wrap}
+.cat .r2 b{color:var(--ink);font-weight:600}
+.pill{font-size:.78rem;font-weight:600;padding:2px 10px;border-radius:999px;white-space:nowrap}
+.pill.ok,.pill.full{background:var(--good-bg);color:var(--good)} .pill.near{background:var(--warn-bg);color:var(--warn)} .pill.over{background:var(--over-bg);color:var(--over)}
+.legend{margin:10px 0 0;color:var(--muted);font-size:.82rem;display:flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:2px;height:14px;background:var(--ink);opacity:.55}
+.log{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column}
+.log li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.log .what{flex:1;min-width:0;display:flex;flex-direction:column}
+.log .what span{color:var(--muted);font-size:.85rem;overflow-wrap:anywhere}
+.log .amt{font-weight:600;white-space:nowrap}
+.empty{margin:12px 0 0;color:var(--muted)}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);padding:18px;width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px)}
+dialog::backdrop{background:rgba(8,14,13,.55)}
+.form{display:flex;flex-direction:column;gap:12px}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-size:.88rem;color:var(--muted)}
+input[type=text],input[type=date],select{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 12px;min-height:46px;width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row .btn{flex:1}
+.msg{margin:0;padding:10px 12px;border-radius:10px;font-size:.92rem}
+.neg{color:var(--over);direction:ltr;unicode-bidi:isolate} .cat .r3{display:block;margin-top:4px;font-size:.8rem;color:var(--over);text-align:start}
+.settle{margin-top:12px;display:grid;gap:8px} .srow{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.opt{display:flex;gap:8px;align-items:flex-start;cursor:pointer} .opt input{margin-top:5px;flex:none}
+.msg.warn{background:var(--over-bg);color:var(--over)} .msg.info{background:var(--good-bg);color:var(--good)}
+.cfg{display:flex;flex-direction:column;gap:8px}
+.cfg .line{display:grid;grid-template-columns:1fr 7em 40px;gap:6px;align-items:center}
+.cfg .line input{min-height:42px;padding:8px 10px}
+.once{display:flex;flex-direction:column;gap:6px}
+.once .line{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.once .line input{width:20px;height:20px}
+.heads{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tabs{position:fixed;inset-inline:0;bottom:0;display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}
+.tabs button{border:0;background:transparent;min-height:56px;font-weight:600;font-size:1rem;color:var(--muted)}
+.tabs button[aria-current="page"]{color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
+body.has-tabs main{padding-bottom:96px}
+#car-view{position:fixed;top:0;left:0;right:0;bottom:calc(56px + env(safe-area-inset-bottom));background:var(--paper)}
+#car-view iframe{width:100%;height:100%;border:0;display:block}
+.cat .name small{font-weight:400;color:var(--muted);font-size:.78rem}
+.tot{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:10px;font-weight:600}
+@media (max-width:400px){ .sum .big{font-size:2.2rem} }
+@media (prefers-reduced-motion: no-preference){ .bar i{transition:width .3s ease} }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>مصروف البيت <small id="ver" hidden></small></h1>
+    <div class="month">
+      <button type="button" class="icon" id="m-prev" aria-label="الشهر السابق">›</button>
+      <b id="m-name"></b>
+      <button type="button" class="icon" id="m-next" aria-label="الشهر التالي">‹</button>
+    </div>
+  </div>
+
+  <p class="note" id="note" hidden></p>
+
+  <section class="card sum" aria-labelledby="sum-k">
+    <span class="k" id="sum-k">المتبقي من دخل الشهر</span>
+    <div class="big"><span id="s-left">—</span> <small>ريال</small></div>
+    <div class="barwrap"><div class="bar" id="s-bar"><i style="width:0"></i></div><span class="tick" id="s-tick" hidden></span></div>
+    <div class="facts">
+      <div class="fact"><span>صُرف</span><b id="s-spent">—</b></div>
+      <div class="fact"><span>الدخل</span><b id="s-income">—</b></div>
+      <div class="fact"><span id="s-day-k">المتاح يومياً</span><b id="s-day">—</b></div>
+    </div>
+  </section>
+
+  <button type="button" class="btn primary wide" id="add-open">تسجيل مصروف</button>
+
+  <section class="card" aria-labelledby="cats-h">
+    <div class="head"><h2 id="cats-h">البنود وحدودها</h2><span class="heads"><button type="button" class="btn sm" id="once-open">ميزانية هذا الشهر</button><button type="button" class="btn sm" id="cfg-open">تعديل الحدود</button></span></div>
+    <p class="note" id="once-note" hidden style="margin-top:12px"></p>
+    <p class="note" id="adj-note" hidden style="margin-top:12px"></p>
+    <div class="cats" id="cats"></div>
+    <div class="settle" id="settle" hidden></div>
+    <p class="legend" id="legend" hidden><i></i> الخط الرأسي: أين وصل الشهر. إن تجاوزه الشريط فالصرف أسرع من الأيام.</p>
+  </section>
+
+  <section class="card" aria-labelledby="log-h">
+    <h2 id="log-h">مصروفات الشهر</h2>
+    <ul class="log" id="log"></ul>
+    <p class="empty" id="log-empty" hidden>لا توجد مصروفات مسجَّلة في هذا الشهر.</p>
+  </section>
+
+  <section class="card" id="adj-card" aria-labelledby="adj-h" hidden>
+    <h2 id="adj-h">تسويات الشهر</h2>
+    <ul class="log" id="adj-log"></ul>
+  </section>
+
+  <section class="card" id="link-card" aria-labelledby="link-h" hidden>
+    <h2 id="link-h">مصروفات السيارة</h2>
+    <p class="empty" id="link-msg" role="status"></p>
+    <div class="f" id="link-box" style="margin-top:10px" hidden><label for="link-code">رمز مزامنة دفتر البنزين</label><input type="text" id="link-code" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr" placeholder="الرمز الذي فعّلت به المزامنة في دفتر البنزين"></div>
+    <div class="row" style="margin-top:10px"><button type="button" class="btn sm" id="link-go" hidden>ربط</button><button type="button" class="btn sm" id="link-pull" hidden>تحديث من دفتر البنزين</button><button type="button" class="btn sm danger" id="link-off" hidden>إلغاء الربط بالرمز</button></div>
+  </section>
+
+  <p class="foot" id="foot" hidden><button type="button" class="btn sm" id="upd">تحديث البرنامج</button><span id="upd-msg" role="status"></span></p>
+</main>
+
+<div id="car-view" hidden><iframe id="car-frame" title="دفتر البنزين والصيانة"></iframe></div>
+<nav class="tabs" id="tabs" hidden aria-label="أقسام البرنامج">
+  <button type="button" id="tab-home" aria-current="page">المصروف</button>
+  <button type="button" id="tab-car">السيارة</button>
+</nav>
+
+<dialog id="add-dlg" aria-labelledby="add-h">
+  <form class="form" id="add-form">
+    <h2 id="add-h">تسجيل مصروف</h2>
+    <div class="f"><label for="a-cat">البند</label><select id="a-cat"></select></div>
+    <p class="msg info" id="a-room" hidden></p>
+    <div class="f"><label for="a-amt">المبلغ (ريال)</label><input type="text" inputmode="decimal" id="a-amt" autocomplete="off" placeholder="0"></div>
+    <div class="f"><label for="a-date">التاريخ</label><input type="date" id="a-date"></div>
+    <div class="f"><label for="a-note">ملاحظة (اختياري)</label><input type="text" id="a-note" maxlength="80" autocomplete="off"></div>
+    <p class="msg warn" id="a-warn" hidden></p>
+    <div class="row"><button type="submit" class="btn primary" id="a-save">حفظ</button><button type="button" class="btn" id="a-cancel">إلغاء</button></div>
+  </form>
+</dialog>
+
+<dialog id="cfg-dlg" aria-labelledby="cfg-h">
+  <form class="form" id="cfg-form">
+    <h2 id="cfg-h">الدخل وحدود البنود</h2>
+    <div class="f"><label for="c-income">الدخل الشهري (ريال)</label><input type="text" inputmode="decimal" id="c-income" autocomplete="off"></div>
+    <div class="cfg" id="c-list"></div>
+    <button type="button" class="btn sm" id="c-add">إضافة بند</button>
+    <div class="tot"><span>مجموع الحدود</span><span id="c-total">0</span></div>
+    <p class="msg warn" id="c-warn" hidden></p>
+    <div class="row"><button type="submit" class="btn primary">حفظ الحدود</button><button type="button" class="btn" id="c-cancel">إلغاء</button></div>
+  </form>
+</dialog>
+
+<dialog id="settle-dlg" aria-labelledby="st-h">
+  <form class="form" id="settle-form">
+    <h2 id="st-h">تسوية التجاوز</h2>
+    <p style="margin:0" id="st-info"></p>
+    <label class="opt"><input type="radio" name="st-how" value="carry" id="st-r-carry" checked> <span id="st-carry-t"></span></label>
+    <label class="opt"><input type="radio" name="st-how" value="move" id="st-r-move"> <span>خصم من بند آخر فيه رصيد</span></label>
+    <p class="hint" id="st-move-none" hidden style="margin:0;color:var(--muted);font-size:.9rem">لا يوجد بند فيه رصيد متبقٍّ هذا الشهر.</p>
+    <div class="f" id="st-move" hidden><label for="st-from">البند المخصوم منه</label><select id="st-from"></select></div>
+    <label class="opt"><input type="radio" name="st-how" value="extra"> <span>مبلغ خارجي غير الراتب لسداد الفارق</span></label>
+    <div class="f" id="st-extra" hidden><label for="st-note">مصدر المبلغ (اختياري)</label><input type="text" id="st-note" maxlength="80" autocomplete="off"></div>
+    <div class="f" id="st-amt-f" hidden><label for="st-amt">المبلغ (ريال)</label><input type="text" inputmode="decimal" id="st-amt" autocomplete="off"></div>
+    <p class="msg warn" id="st-warn" hidden></p>
+    <div class="row"><button type="submit" class="btn primary" id="st-save">اعتماد</button><button type="button" class="btn" id="st-cancel">إلغاء</button></div>
+  </form>
+</dialog>
+
+<dialog id="car-dlg" aria-labelledby="car-h">
+  <div class="form">
+    <h2 id="car-h">يُسجَّل من قسم السيارة</h2>
+    <p style="margin:0">مصروفات البنزين والصيانة تُسجَّل من قسم السيارة فقط، وتظهر هنا تلقائياً في بندها. لا تُدخَل من قسم المصروف.</p>
+    <div class="row"><button type="button" class="btn primary" id="car-go">فتح قسم السيارة</button><button type="button" class="btn" id="car-close">إغلاق</button></div>
+  </div>
+</dialog>
+
+<dialog id="once-dlg" aria-labelledby="o-h">
+  <form class="form" id="once-form">
+    <h2 id="o-h">ميزانية خاصة لهذا الشهر</h2>
+    <p class="hint" style="margin:0;color:var(--muted);font-size:.9rem">لمرة واحدة: اكتب المبلغ المتوفر لباقي هذا الشهر، فيوزَّع على البنود المختارة بنسبة حدودها. الحدود الأصلية تعود تلقائياً الشهر القادم.</p>
+    <div class="f"><label for="o-amt">المبلغ المتوفر (ريال)</label><input type="text" inputmode="decimal" id="o-amt" autocomplete="off" placeholder="0"></div>
+    <div class="once" id="o-list"></div>
+    <p class="msg warn" id="o-warn" hidden></p>
+    <div class="row"><button type="submit" class="btn primary">اعتماد لهذا الشهر</button><button type="button" class="btn" id="o-cancel">إلغاء</button></div>
+    <button type="button" class="btn sm danger" id="o-clear" hidden>إلغاء الميزانية الخاصة والعودة للحدود الأصلية</button>
+  </form>
+</dialog>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var LS = "masroof-v1";
+  var VERSION = 12;
+  /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
+  var STANDALONE = !window.claude;
+  var STARTER = {income:5500, cats:[
+    {id:"rent", name:"الإيجار", limit:1042}, {id:"fuel", name:"بنزين السيارة", limit:608},
+    {id:"carfund", name:"مخصص صيانة السيارة", limit:310}, {id:"food", name:"الطعام ومستلزمات البيت", limit:1900},
+    {id:"util", name:"كهرباء وماء", limit:300}, {id:"telecom", name:"اتصالات وإنترنت", limit:200},
+    {id:"kids", name:"مدارس ومستلزمات الأطفال", limit:300}, {id:"health", name:"صحة وملابس", limit:250},
+    {id:"save", name:"ادخار وطوارئ", limit:300}, {id:"misc", name:"متفرقات", limit:290}],
+    /* باقي نوفمبر 2026: المتوفر 1,000 ريال موزّعة على البنود بنسبة حدودها، لهذا الشهر فقط */
+    months:{"2026-11":{income:1000, from:"2026-11-20", limits:{rent:189, fuel:110, carfund:56, food:350, util:54, telecom:36, kids:54, health:45, save:54, misc:52}}}};
+  var db = null, cfg = null, expenses = [], month = today().slice(0,7), cfgDraft = [], forceOver = false;
+
+  function today(){ var d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function pad(n){ return (n < 10 ? "0" : "") + n; }
+  function num(v){ var s = String(v == null ? "" : v).replace(/[٠-٩]/g, function(c){ return "٠١٢٣٤٥٦٧٨٩".indexOf(c); }).replace(/[٬,\s]/g, "").replace("٫", "."); var n = parseFloat(s); return isFinite(n) ? n : NaN; }
+  function fmt(n){ return (Math.round(n * 100) / 100).toLocaleString("en-US", {maximumFractionDigits:2}); }
+  function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function newId(){ return "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  var monthFmt = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {month:"long", year:"numeric"});
+  var dayFmt = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {day:"numeric", month:"short"});
+  function dateOf(s){ var p = s.split("-"); return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2] || 1)); }
+  function daysIn(m){ var p = m.split("-"); return new Date(Number(p[0]), Number(p[1]), 0).getDate(); }
+  function shift(m, by){ var p = m.split("-"), d = new Date(Number(p[0]), Number(p[1]) - 1 + by, 1); return d.getFullYear() + "-" + pad(d.getMonth() + 1); }
+  function open(d){ try { d.showModal(); } catch(e){ d.setAttribute("open", ""); } }
+
+  /* ---------- التخزين: قاعدة بيانات الصفحة إن توفرت، وإلا هذا المتصفح ---------- */
+  function loadLocal(){
+    try { var o = JSON.parse(localStorage.getItem(LS) || "null"); if (o){ cfg = o.cfg || null; expenses = o.expenses || []; } } catch(e){}
+  }
+  function saveLocal(){ try { localStorage.setItem(LS, JSON.stringify({cfg:cfg, expenses:expenses})); } catch(e){} }
+  function note(t){ $("note").textContent = t || ""; $("note").hidden = !t; }
+  function cleanCfg(v){
+    if (!v || !Array.isArray(v.cats)) return null;
+    var out = {income:Number(v.income) > 0 ? Number(v.income) : 0,
+            cats:v.cats.filter(function(c){ return c && c.id && c.name; }).map(function(c){ return {id:String(c.id), name:String(c.name).slice(0, 40), limit:Number(c.limit) > 0 ? Number(c.limit) : 0}; })};
+    /* ميزانيات خاصة بشهر بعينه: مبلغ متوفر لمرة واحدة وحدود ذلك الشهر فقط */
+    if (v.months && typeof v.months === "object"){
+      out.months = {};
+      Object.keys(v.months).forEach(function(k){
+        var o = v.months[k]; if (!/^\d{4}-\d{2}$/.test(k) || !o || !(Number(o.income) > 0)) return;
+        var lim = {}; Object.keys(o.limits || {}).forEach(function(id){ var n = Number(o.limits[id]); if (n > 0) lim[id] = n; });
+        out.months[k] = {income:Number(o.income), limits:lim};
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(o.from || ""))) out.months[k].from = String(o.from);
+      });
+    }
+    /* تسويات التجاوز: نقل من بند إلى بند، أو مبلغ خارجي غير الراتب */
+    if (Array.isArray(v.adjs)){
+      out.adjs = v.adjs.filter(function(a){ return a && a.id && /^\d{4}-\d{2}$/.test(String(a.m)) && (a.t === "move" || a.t === "extra") && a.to && Number(a.amount) > 0; })
+        .map(function(a){ var o = {id:String(a.id), m:String(a.m), t:a.t, to:String(a.to), amount:Number(a.amount)}; if (a.t === "move") o.from = String(a.from || ""); if (a.note) o.note = String(a.note).slice(0, 80); return o; });
+    }
+    return out;
+  }
+  async function start(){
+    render();
+    try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch(e){ db = null; }
+    if (!db && STANDALONE){ loadLocal(); if (!cfg) cfg = cleanCfg(STARTER); standalone(); render(); return; }
+    if (!db){ loadLocal(); note(window.claude ? "البيانات محفوظة في هذا المتصفح فقط، ولا تظهر في أجهزتك الأخرى." : ""); render(); return; }
+    var slow = setTimeout(function(){ note("تعذّر الوصول إلى البيانات حتى الآن. تحقق من الاتصال."); }, 10000);
+    function live(snap){ if (!snap.metadata || !snap.metadata.fromCache){ clearTimeout(slow); note(""); } }
+    function dead(){ clearTimeout(slow); note("تعذّر تحميل البيانات. أعد فتح الصفحة لاحقاً."); }
+    db.doc("config/budget").onSnapshot(function(s){ live(s); cfg = s.exists ? cleanCfg(s.data()) : null; render(); }, dead);
+    db.collection("expenses").onSnapshot(function(q){
+      live(q);
+      expenses = q.docs.map(function(d){ var v = d.data() || {}; return {id:d.id, cat:String(v.cat || ""), amount:Number(v.amount) || 0, date:String(v.date || ""), note:String(v.note || ""), at:String(v.at || "")}; });
+      render();
+    }, dead);
+  }
+
+  /* ---------- الربط مع دفتر البنزين (على الموقع نفسه): تعبئات البنزين وتكاليف الصيانة تدخل تلقائياً في بندَيها ----------
+     المصدر: بيانات دفتر البنزين في هذا المتصفح، أو نسخته على خادم المزامنة برمز المزامنة. للقراءة فقط، ولا يُكتب في دفتر البنزين شيء. */
+  var FUELDB = "fuelapp-db-v1", FUELKEY = "fuelapp-sync-key", LINK = "masroof-fuel-link", FUELCACHE = "masroof-fuel-cache";
+  var fuelRows = [], fuelDocs = {}, fuelSrc = "", fuelInfo = {fills:0, services:0};
+  function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function lsJson(k){ try { return JSON.parse(lsGet(k) || "null"); } catch(e){ return null; } }
+  function fuelKey(){ return lsGet(FUELKEY) || (lsJson(LINK) || {}).key || null; }
+  function catFor(kind){
+    var cats = cfg ? cfg.cats : [], id = kind === "fuel" ? "fuel" : "carfund", re = kind === "fuel" ? /بنزين|وقود/ : /صيان/;
+    var c = cats.find(function(x){ return x.id === id; }) || cats.find(function(x){ return re.test(x.name); });
+    return c || null;
+  }
+  function buildFuel(docs, src){
+    var rows = [], fc = catFor("fuel"), cc = catFor("car"), nf = 0, ns = 0;
+    Object.keys(docs || {}).forEach(function(p){
+      var d = docs[p]; if (!d || typeof d !== "object" || !d.ts) return;
+      if (p.indexOf("fills/") === 0 && fc && Number(d.amount) > 0){ rows.push({id:"fuel:" + p, cat:fc.id, amount:Number(d.amount), date:String(d.ts).slice(0,10), note:"تعبئة بنزين · من دفتر البنزين", at:String(d.ts), ext:true}); nf++; }
+      else if (p.indexOf("services/") === 0 && cc && Number(d.cost) > 0){ rows.push({id:"fuel:" + p, cat:cc.id, amount:Number(d.cost), date:String(d.ts).slice(0,10), note:"صيانة · من دفتر البنزين", at:String(d.ts), ext:true}); ns++; }
+    });
+    fuelRows = rows; fuelDocs = docs || {}; fuelSrc = src; fuelInfo = {fills:nf, services:ns};
+  }
+  function loadFuel(){
+    var docs = lsJson(FUELDB), src = "local";
+    if (!docs || !Object.keys(docs).length){ docs = lsJson(FUELCACHE); src = docs ? "remote" : ""; }
+    buildFuel(docs || {}, src);
+  }
+  async function pullFuel(key){
+    key = key || fuelKey(); if (!key) return "nokey";
+    try {
+      var r = await fetch("../fuel/sync.php?a=sync", {method:"POST", cache:"no-store", headers:{"Content-Type":"application/json", "X-Sync-Key":key}, body:JSON.stringify({docs:{}, dels:{}})});
+      if (r.status === 404) return "badcode";
+      if (!r.ok) return "error";
+      var o = await r.json(), docs = {};
+      Object.keys(o.docs || {}).forEach(function(p){ docs[p] = o.docs[p].d; });
+      try { localStorage.setItem(FUELCACHE, JSON.stringify(docs)); } catch(e){}
+      buildFuel(docs, "remote"); render(); return "ok";
+    } catch(e){ return "error"; }
+  }
+  function linkMsg(){
+    var fc = catFor("fuel"), cc = catFor("car"), hasKey = !!fuelKey(), own = !!(lsJson(LINK) || {}).key, msg = $("link-msg");
+    $("link-box").hidden = hasKey; $("link-go").hidden = hasKey; $("link-pull").hidden = !hasKey; $("link-off").hidden = !own;
+    if (msg.dataset.hold) return;
+    if (!fc && !cc){ msg.textContent = "لا يوجد بند للبنزين أو لصيانة السيارة في بنودك، فلا تُحسب بيانات دفتر البنزين. أضف بنداً باسم «بنزين السيارة» أو «صيانة السيارة»."; return; }
+    if (fuelSrc) msg.textContent = "من قسم «السيارة»: " + fuelInfo.fills + " تعبئة و" + fuelInfo.services + " سجل صيانة تُحسب تلقائياً" + (fc ? " · البنزين في «" + fc.name + "»" : "") + (cc ? " · الصيانة في «" + cc.name + "»" : "") + ".";
+    else msg.textContent = "لا توجد بيانات سيارة هنا بعد. سجّل تعبئة أو صيانة من قسم «السيارة» بالأسفل فتدخل في بنودها تلقائياً. وإن كانت بياناتك في تطبيق دفتر البنزين أو جهاز آخر، اكتب رمز مزامنته لجلبها.";
+  }
+  function hold(t){ var m = $("link-msg"); m.dataset.hold = "1"; m.textContent = t; setTimeout(function(){ delete m.dataset.hold; linkMsg(); }, 4000); }
+  function linkSetup(){
+    $("link-card").hidden = false; loadFuel(); pullFuel();
+    $("link-go").addEventListener("click", async function(){
+      var code = $("link-code").value.trim(), btn = this;
+      if (code.length < 8){ hold("اكتب رمز المزامنة كما أدخلته في دفتر البنزين (8 خانات أو أكثر)."); return; }
+      btn.disabled = true;
+      var h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("fuel-sync-code|" + code));
+      var key = Array.from(new Uint8Array(h)).map(function(b){ return b.toString(16).padStart(2, "0"); }).join("");
+      var res = await pullFuel(key);
+      if (res === "ok"){ try { localStorage.setItem(LINK, JSON.stringify({key:key})); } catch(e){} $("link-code").value = ""; hold("تم الربط بدفتر البنزين."); render(); }
+      else hold(res === "badcode" ? "الرمز غير موجود. تأكد أنه الرمز نفسه الذي فعّلت به المزامنة في دفتر البنزين." : "تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.");
+      btn.disabled = false;
+    });
+    $("link-pull").addEventListener("click", async function(){
+      this.disabled = true; var res = await pullFuel(); this.disabled = false;
+      hold(res === "ok" ? "تم التحديث من دفتر البنزين." : res === "badcode" ? "رمز المزامنة لم يعد موجوداً." : "تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.");
+    });
+    $("link-off").addEventListener("click", function(){
+      try { localStorage.removeItem(LINK); localStorage.removeItem(FUELCACHE); } catch(e){}
+      loadFuel(); render();
+    });
+    window.addEventListener("storage", function(ev){ if (ev.key === FUELDB){ loadFuel(); render(); } });
+    document.addEventListener("visibilitychange", function(){ if (!document.hidden){ loadFuel(); render(); pullFuel(); } });
+  }
+
+  /* ---------- رقم النسخة والتحديث (النسخة المستقلة فقط) ---------- */
+  async function latest(){
+    try {
+      var r = await fetch("index.html?check=" + Date.now(), {cache:"no-store"}); if (!r.ok) return null;
+      var m = (await r.text()).match(/var VERSION = (\d+);/); return m ? Number(m[1]) : null;
+    } catch(e){ return null; }
+  }
+  /* برنامج واحد بقسمين: «المصروف» و«السيارة». قسم السيارة هو دفتر البنزين كاملاً، ومصروفاته تدخل في بنود المصروف تلقائياً */
+  function tabsSetup(){
+    var frame = $("car-frame"), view = $("car-view");
+    $("tabs").hidden = false; document.body.classList.add("has-tabs");
+    function show(car){
+      if (car && !frame.getAttribute("src")) frame.setAttribute("src", "../fuel/");
+      view.hidden = !car; document.querySelector("main").hidden = car;
+      $("tab-home").setAttribute("aria-current", car ? "false" : "page"); $("tab-car").setAttribute("aria-current", car ? "page" : "false");
+      if (!car){ loadFuel(); render(); window.scrollTo(0, 0); }
+    }
+    $("tab-home").addEventListener("click", function(){ show(false); });
+    $("tab-car").addEventListener("click", function(){ show(true); });
+  }
+  function standalone(){
+    linkSetup(); if (window.self === window.top) tabsSetup();
+    /* بيانات المصروف قد تُستعاد من الخادم عبر مزامنة دفتر المصروف: عند تغيّرها من خارج هذه الصفحة تُعاد قراءتها */
+    window.addEventListener("storage", function(ev){
+      if (ev.key !== LS || document.querySelector("dialog[open]")) return;
+      loadLocal(); if (!cfg) cfg = cleanCfg(STARTER); render();
+    });
+    $("ver").textContent = "نسخة " + VERSION; $("ver").hidden = false; $("foot").hidden = false;
+    var msg = $("upd-msg");
+    $("upd").addEventListener("click", async function(){
+      var btn = this; btn.disabled = true; msg.textContent = "جارٍ البحث عن تحديث…";
+      var n = await latest();
+      if (n == null) msg.textContent = "تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.";
+      else if (n > VERSION){ msg.textContent = "جارٍ التحديث إلى النسخة " + n + "… بياناتك باقية."; location.replace("./?v=" + n); return; }
+      else msg.textContent = "أنت على آخر نسخة (" + VERSION + ").";
+      btn.disabled = false;
+    });
+    /* تحديث تلقائي: عند فتح التطبيق أو العودة إليه، إن وُجدت نسخة أحدث تُحمَّل مباشرة. البيانات لا تتأثر */
+    function autoUpd(){
+      latest().then(function(n){
+        if (n == null || n <= VERSION) return;
+        var tried = null; try { tried = sessionStorage.getItem("masroof-upd"); } catch(e){}
+        if (tried === String(n)){ msg.textContent = "توجد نسخة أحدث (" + n + "). اضغط «تحديث البرنامج»."; return; }
+        try { sessionStorage.setItem("masroof-upd", String(n)); } catch(e){}
+        location.replace("./?v=" + n);
+      });
+    }
+    autoUpd();
+    document.addEventListener("visibilitychange", function(){ if (!document.hidden && !document.querySelector("dialog[open]")) autoUpd(); });
+  }
+
+  /* ---------- الحساب ---------- */
+  function eff(m){
+    var o = cfg && cfg.months && cfg.months[m];
+    return {once:!!o, from:o && o.from ? o.from : null, income:o ? o.income : (cfg ? cfg.income : 0), limit:function(c){ return o ? (Number(o.limits[c.id]) || 0) : c.limit; }};
+  }
+  async function saveCfg(next){ if (db) await db.doc("config/budget").set(next); cfg = next; if (!db) saveLocal(); }
+  /* الميزانية الخاصة قد تبدأ من يوم محدد داخل الشهر: ما قبله لا يُحسب عليها */
+  /* التجاوز: ما زاد على حد البند ولم يُسوَّ يُرحَّل خصماً من حد البند نفسه في الشهر التالي */
+  function adjs(m){ return ((cfg && cfg.adjs) || []).filter(function(a){ return a.m === m; }); }
+  function firstMonth(){
+    var ks = Object.keys((cfg && cfg.months) || {}).concat(expenses.map(function(e){ return e.date.slice(0,7); }), ((cfg && cfg.adjs) || []).map(function(a){ return a.m; })).filter(function(k){ return /^\d{4}-\d{2}$/.test(k); }).sort();
+    return ks.length ? ks[0] : today().slice(0,7);
+  }
+  function spentIn(m, id){ var F = eff(m).from; return expenses.concat(fuelRows).reduce(function(a, e){ return a + (e.cat === id && e.date.slice(0,7) === m && (!F || e.date >= F) ? e.amount : 0); }, 0); }
+  function adjNet(m, id){ return adjs(m).reduce(function(a, x){ return a + (x.to === id ? x.amount : 0) - (x.t === "move" && x.from === id ? x.amount : 0); }, 0); }
+  function carryIn(m, c){
+    if (m <= firstMonth()) return 0;
+    var p = shift(m, -1), d = spentIn(p, c.id) - limitOf(p, c);
+    return d > 0.005 ? Math.round(d * 100) / 100 : 0;
+  }
+  function limitOf(m, c){ return eff(m).limit(c) + adjNet(m, c.id) - carryIn(m, c); }
+  function extraOf(m){ return adjs(m).reduce(function(a, x){ return a + (x.t === "extra" ? x.amount : 0); }, 0); }
+  function carryAll(m){ return (cfg ? cfg.cats : []).reduce(function(a, c){ return a + carryIn(m, c); }, 0); }
+  function monthRows(){ var f = eff(month).from; return expenses.concat(fuelRows).filter(function(e){ return e.date.slice(0,7) === month && (!f || e.date >= f); }); }
+  function spentBy(){ var m = {}; monthRows().forEach(function(e){ m[e.cat] = (m[e.cat] || 0) + e.amount; }); return m; }
+  function state(spent, limit){ return spent > limit + 0.005 ? "over" : (limit > 0 && spent >= limit - 0.005 ? "full" : (limit > 0 && spent >= limit * 0.8 ? "near" : "ok")); }
+  var LABEL = {ok:"ضمن الحد", near:"اقترب من الحد", full:"اكتمل الحد", over:"تجاوز الحد"};
+
+  function render(){
+    $("m-name").textContent = monthFmt.format(dateOf(month + "-01"));
+    if (STANDALONE){ buildFuel(fuelDocs, fuelSrc); linkMsg(); }
+    var E = eff(month), cats = cfg ? cfg.cats : [], by = spentBy(), extra = extraOf(month), carried = carryAll(month), income = E.income + extra - carried;
+    $("once-note").hidden = !E.once;
+    if (E.once) $("once-note").textContent = "هذا الشهر بميزانية خاصة: " + fmt(E.income) + " ريال موزّعة على البنود" + (E.from ? "، وتُحسب المصروفات من " + dayFmt.format(dateOf(E.from)) : "") + ". الحدود الأصلية تعود الشهر القادم.";
+    var spent = monthRows().reduce(function(a, e){ return a + e.amount; }, 0), left = income - spent;
+    var isNow = month === today().slice(0,7), dim = daysIn(month), dayNo = isNow ? Number(today().slice(8)) : null;
+    var prog = isNow ? dayNo / dim : null;
+    $("s-left").textContent = cfg ? fmt(left) : "—"; $("s-left").style.color = left < -0.005 ? "var(--over)" : "";
+    var an = $("adj-note"), parts = [];
+    if (extra > 0) parts.push("أُضيف مبلغ خارجي " + fmt(extra) + " ريال");
+    if (carried > 0) parts.push("خُصم عجز مرحَّل من الشهر السابق " + fmt(carried) + " ريال");
+    an.hidden = !parts.length; an.textContent = parts.join("، ") + ".";
+    $("s-spent").textContent = fmt(spent); $("s-income").textContent = cfg ? fmt(income) : "—";
+    var st = income > 0 ? state(spent, income) : "ok";
+    $("s-bar").className = "bar " + st; $("s-bar").firstElementChild.style.width = (income > 0 ? Math.min(100, spent / income * 100) : 0) + "%";
+    setTick($("s-tick"), prog);
+    if (isNow){ var dl = dim - dayNo + 1; $("s-day-k").textContent = "متاح يومياً (" + dl + " يوماً)"; $("s-day").textContent = cfg ? fmt(Math.max(0, left) / dl) : "—"; }
+    else { $("s-day-k").textContent = "متوسط الصرف اليومي"; $("s-day").textContent = fmt(spent / dim); }
+
+    var box = $("cats"), overs = [];
+    if (!cats.length){
+      box.innerHTML = '<p class="empty">لم تُحدَّد البنود بعد. اضغط «تعديل الحدود» لإضافة بنودك وحد كل بند.</p>';
+    } else {
+      box.innerHTML = cats.map(function(c){
+        var s = by[c.id] || 0, L = limitOf(month, c), k = state(s, L), rest = L - s, ci = carryIn(month, c);
+        if (rest < -0.005) overs.push({c:c, d:-rest});
+        return '<button type="button" class="cat" data-cat="' + esc(c.id) + '"><span class="r1"><span class="name">' + esc(c.name) + (carLocked(c.id) ? ' <small>· من قسم السيارة</small>' : '') + '</span><span class="pill ' + k + '">' + LABEL[k] + '</span></span>' +
+          '<span class="barwrap"><span class="bar ' + k + '" style="display:block"><i style="width:' + (L > 0 ? Math.min(100, s / L * 100) : (s > 0 ? 100 : 0)) + '%"></i></span>' + (prog != null ? '<span class="tick" style="inset-inline-start:' + (prog * 100) + '%"></span>' : "") + '</span>' +
+          '<span class="r2"><span>صُرف <b>' + fmt(s) + '</b> من ' + fmt(L) + '</span><span>' + (rest >= -0.005 ? 'الباقي <b>' + fmt(Math.max(0, rest)) + '</b>' : 'الرصيد <b class="neg">' + fmt(rest) + '</b>') + '</span></span>' + (ci > 0 ? '<span class="r3">مرحَّل من الشهر السابق: ' + fmt(-ci) + '</span>' : '') + '</button>';
+      }).join("");
+    }
+    $("legend").hidden = !(cats.length && prog != null);
+    var sb = $("settle"), nx = monthFmt.format(dateOf(shift(month, 1) + "-01"));
+    sb.hidden = !overs.length;
+    sb.innerHTML = overs.length ? '<p class="msg warn">بنود تجاوزت حدّها. ما لا يُسوّى يُرحَّل خصماً من حد البند في ' + esc(nx) + '.</p>' + overs.map(function(o){
+      return '<div class="srow"><span><b>' + esc(o.c.name) + '</b> · عجز <b class="neg">' + fmt(-o.d) + '</b></span><button type="button" class="btn sm" data-settle="' + esc(o.c.id) + '">تسوية</button></div>'; }).join("") : "";
+    var al = adjs(month), nameOf = function(id){ var c = cats.find(function(x){ return x.id === id; }); return c ? c.name : "بند محذوف"; };
+    $("adj-card").hidden = !al.length;
+    summary();
+    $("adj-log").innerHTML = al.map(function(a){
+      return '<li><span class="what"><b>' + (a.t === "move" ? "نقل من «" + esc(nameOf(a.from)) + "» إلى «" + esc(nameOf(a.to)) + "»" : "مبلغ خارجي إلى «" + esc(nameOf(a.to)) + "»") + '</b><span>' + (a.note ? esc(a.note) : (a.t === "move" ? "خصم من بند آخر" : "غير الراتب")) + '</span></span><span class="amt">' + fmt(a.amount) + '</span><button type="button" class="btn sm danger" data-adj="' + esc(a.id) + '">حذف</button></li>';
+    }).join("");
+
+    var rows = monthRows().slice().sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : (a.at < b.at ? 1 : -1); });
+    $("log-empty").hidden = rows.length > 0;
+    $("log").innerHTML = rows.map(function(e){
+      var c = cats.find(function(x){ return x.id === e.cat; });
+      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
+        '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button>') + '</li>';
+    }).join("");
+  }
+  /* ملخص الشهر الحالي للصفحة الرئيسية في «دفتر المصروف»: المصروف والباقي */
+  function summary(){
+    if (!STANDALONE || !cfg) return;
+    try {
+      var m = today().slice(0,7), E = eff(m), inc = E.income + extraOf(m) - carryAll(m);
+      var sp = expenses.concat(fuelRows).reduce(function(a, e){ return a + (e.date.slice(0,7) === m && (!E.from || e.date >= E.from) ? e.amount : 0); }, 0);
+      /* الحد اليومي الشامل (المنزل + السيارة): ما بقي من ميزانية الشهر حتى بداية اليوم مقسوماً على الأيام الباقية ومنها اليوم */
+      var td = today(), last = new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate(), daysLeft = Math.max(1, last - Number(td.slice(8)) + 1), before = 0, dsp = 0;
+      expenses.concat(fuelRows).forEach(function(e){ if (e.date.slice(0,7) !== m || (E.from && e.date < E.from)) return; if (e.date < td) before += e.amount; else if (e.date === td) dsp += e.amount; });
+      var dl = Math.max(0, (inc - before) / daysLeft);
+      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft});
+      if (localStorage.getItem("masroof-summary") !== v) localStorage.setItem("masroof-summary", v);
+    } catch(e){}
+  }
+  function setTick(el, prog){ el.hidden = prog == null; if (prog != null) el.style.insetInlineStart = (prog * 100) + "%"; }
+
+  /* بندا البنزين وصيانة السيارة متلقّيان فقط: يُسجَّلان من قسم السيارة ولا يُدخَلان من هنا (في النسخة التي فيها قسم السيارة) */
+  function carLocked(id){
+    if (!STANDALONE) return false;
+    var f = catFor("fuel"), c = catFor("car");
+    return !!((f && f.id === id) || (c && c.id === id));
+  }
+  $("car-close").addEventListener("click", function(){ $("car-dlg").close(); });
+  $("car-go").addEventListener("click", function(){
+    $("car-dlg").close();
+    try { var t = window.self !== window.top ? window.parent.document.getElementById("tab-car") : $("tab-car"); if (t) t.click(); } catch(e){}
+  });
+
+  /* ---------- تسجيل مصروف ---------- */
+  function openAdd(catId){
+    if (!cfg || !cfg.cats.length){ openCfg(); return; }
+    if (catId && carLocked(catId)){ open($("car-dlg")); return; }
+    $("a-cat").innerHTML = cfg.cats.filter(function(c){ return !carLocked(c.id); }).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join("");
+    if (catId) $("a-cat").value = catId;
+    $("a-amt").value = ""; $("a-note").value = "";
+    $("a-date").value = month === today().slice(0,7) ? today() : month + "-01";
+    resetWarn(); room(); open($("add-dlg")); $("a-amt").focus();
+  }
+  function resetWarn(){ forceOver = false; $("a-warn").hidden = true; $("a-save").textContent = "حفظ"; }
+  function room(){
+    var c = cfg.cats.find(function(x){ return x.id === $("a-cat").value; }), d = $("a-date").value || today(), m = d.slice(0,7);
+    var s = spentIn(m, c.id), L = limitOf(m, c), rest = L - s, el = $("a-room");
+    el.hidden = false; el.className = "msg " + (rest > 0 ? "info" : "warn");
+    el.textContent = rest > 0 ? "المتاح في «" + c.name + "» هذا الشهر: " + fmt(rest) + " ريال من " + fmt(L) + "." : "بند «" + c.name + "» استنفد حده (" + fmt(L) + " ريال) هذا الشهر.";
+    return rest;
+  }
+  $("a-cat").addEventListener("change", function(){ resetWarn(); room(); });
+  $("a-date").addEventListener("change", function(){ resetWarn(); room(); });
+  $("a-amt").addEventListener("input", resetWarn);
+  $("add-form").addEventListener("submit", async function(ev){
+    ev.preventDefault();
+    var amt = num($("a-amt").value), date = $("a-date").value, w = $("a-warn");
+    if (!(amt > 0)){ w.hidden = false; w.textContent = "اكتب المبلغ بالريال."; return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)){ w.hidden = false; w.textContent = "حدّد التاريخ."; return; }
+    var rest = room();
+    if (amt > rest + 0.005 && !forceOver){
+      forceOver = true; w.hidden = false;
+      w.textContent = "هذا المبلغ يتجاوز حد البند بـ " + fmt(amt - Math.max(0, rest)) + " ريال. خفّض المبلغ، أو اضغط «سجّل مع التجاوز» إن كان الصرف لازماً.";
+      $("a-save").textContent = "سجّل مع التجاوز"; return;
+    }
+    var rec = {cat:$("a-cat").value, amount:Math.round(amt * 100) / 100, date:date, note:$("a-note").value.trim().slice(0, 80), at:new Date().toISOString()};
+    var btn = $("a-save"); btn.disabled = true;
+    try {
+      if (db) await db.collection("expenses").doc().set(rec);
+      else { expenses.push(Object.assign({id:newId()}, rec)); saveLocal(); }
+      month = date.slice(0,7); $("add-dlg").close(); render();
+    } catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+    btn.disabled = false;
+  });
+  $("a-cancel").addEventListener("click", function(){ $("add-dlg").close(); });
+  $("add-open").addEventListener("click", function(){ openAdd(null); });
+  $("cats").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-cat]"); if (b) openAdd(b.dataset.cat); });
+  $("log").addEventListener("click", async function(ev){
+    var b = ev.target.closest("button[data-del]"); if (!b) return;
+    if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد الحذف"; return; }
+    b.disabled = true;
+    try {
+      if (db) await db.doc("expenses/" + b.dataset.del).delete();
+      else { expenses = expenses.filter(function(e){ return e.id !== b.dataset.del; }); saveLocal(); render(); }
+    } catch(e){ b.disabled = false; b.textContent = "تعذّر الحذف"; }
+  });
+
+  /* ---------- تسوية التجاوز ---------- */
+  var stCat = null;
+  function stDef(){ var c = cfg.cats.find(function(x){ return x.id === stCat; }); return c ? Math.max(0, Math.round((spentIn(month, c.id) - limitOf(month, c)) * 100) / 100) : 0; }
+  function stDraw(){
+    var how = (document.querySelector('input[name="st-how"]:checked') || {}).value || "carry";
+    $("st-move").hidden = how !== "move"; $("st-extra").hidden = how !== "extra"; $("st-amt-f").hidden = how === "carry";
+    $("st-save").textContent = how === "carry" ? "ترحيل إلى الشهر التالي" : "اعتماد التسوية"; $("st-warn").hidden = true;
+    if (how === "move"){ var o = $("st-from").selectedOptions[0], mx = o ? Number(o.dataset.rest) : 0; $("st-amt").value = Math.min(stDef(), mx) || ""; }
+    if (how === "extra") $("st-amt").value = stDef() || "";
+  }
+  function openSettle(id){
+    stCat = id; var c = cfg.cats.find(function(x){ return x.id === id; }); if (!c) return;
+    var d = stDef(), nx = monthFmt.format(dateOf(shift(month, 1) + "-01"));
+    $("st-info").textContent = "بند «" + c.name + "» تجاوز حدّه بـ " + fmt(d) + " ريال. اختر طريقة التسوية:";
+    $("st-carry-t").textContent = "ترحيل العجز إلى " + nx + " (يُخصم من حد البند هناك)";
+    var src = cfg.cats.filter(function(x){ return x.id !== id; }).map(function(x){ return {c:x, r:Math.round((limitOf(month, x) - spentIn(month, x.id)) * 100) / 100}; }).filter(function(x){ return x.r > 0.005; });
+    $("st-from").innerHTML = src.map(function(x){ return '<option value="' + esc(x.c.id) + '" data-rest="' + x.r + '">' + esc(x.c.name) + ' — الباقي ' + fmt(x.r) + '</option>'; }).join("");
+    $("st-r-move").disabled = !src.length; $("st-move-none").hidden = !!src.length;
+    $("st-r-carry").checked = true; $("st-note").value = ""; stDraw(); open($("settle-dlg"));
+  }
+  $("settle").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-settle]"); if (b) openSettle(b.dataset.settle); });
+  $("settle-form").addEventListener("change", function(ev){ if (ev.target.name === "st-how" || ev.target.id === "st-from") stDraw(); });
+  $("st-cancel").addEventListener("click", function(){ $("settle-dlg").close(); });
+  $("settle-form").addEventListener("submit", async function(ev){
+    ev.preventDefault();
+    var how = (document.querySelector('input[name="st-how"]:checked') || {}).value || "carry", w = $("st-warn");
+    if (how === "carry"){ $("settle-dlg").close(); return; }
+    var amt = num($("st-amt").value); if (!(amt > 0)){ w.hidden = false; w.textContent = "اكتب المبلغ بالريال."; return; }
+    amt = Math.round(amt * 100) / 100;
+    var a = {id:newId(), m:month, t:how, to:stCat, amount:amt};
+    if (how === "move"){
+      var o = $("st-from").selectedOptions[0]; if (!o){ w.hidden = false; w.textContent = "لا يوجد بند فيه رصيد للخصم منه."; return; }
+      if (amt > Number(o.dataset.rest) + 0.005){ w.hidden = false; w.textContent = "المبلغ أكبر من الباقي في البند المخصوم منه (" + fmt(Number(o.dataset.rest)) + " ريال)."; return; }
+      a.from = o.value;
+    } else { var n = $("st-note").value.trim().slice(0, 80); if (n) a.note = n; }
+    var next = Object.assign({}, cfg, {adjs:((cfg.adjs) || []).concat([a])});
+    try { await saveCfg(cleanCfg(next)); $("settle-dlg").close(); render(); }
+    catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+  });
+  $("adj-log").addEventListener("click", async function(ev){
+    var b = ev.target.closest("button[data-adj]"); if (!b) return;
+    if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد الحذف"; return; }
+    b.disabled = true;
+    try { await saveCfg(cleanCfg(Object.assign({}, cfg, {adjs:(cfg.adjs || []).filter(function(a){ return a.id !== b.dataset.adj; })}))); render(); }
+    catch(e){ b.disabled = false; b.textContent = "تعذّر الحذف"; }
+  });
+
+  /* ---------- الدخل والحدود ---------- */
+  function openCfg(){
+    cfgDraft = (cfg ? cfg.cats : []).map(function(c){ return {id:c.id, name:c.name, limit:c.limit}; });
+    $("c-income").value = cfg && cfg.income ? cfg.income : "";
+    $("c-warn").hidden = true; drawCfg(); open($("cfg-dlg"));
+  }
+  function drawCfg(){
+    $("c-list").innerHTML = cfgDraft.map(function(c, i){
+      return '<div class="line"><input type="text" id="c-name-' + i + '" data-i="' + i + '" data-k="name" value="' + esc(c.name) + '" maxlength="40" aria-label="اسم البند" placeholder="اسم البند">' +
+        '<input type="text" inputmode="decimal" id="c-limit-' + i + '" data-i="' + i + '" data-k="limit" value="' + (c.limit || "") + '" aria-label="الحد الشهري بالريال" placeholder="الحد">' +
+        '<button type="button" class="icon" data-rm="' + i + '" aria-label="حذف البند">×</button></div>';
+    }).join("");
+    cfgTotal();
+  }
+  function cfgTotal(){
+    var t = cfgDraft.reduce(function(a, c){ return a + (Number(c.limit) || 0); }, 0), inc = num($("c-income").value), w = $("c-warn");
+    $("c-total").textContent = fmt(t) + (inc > 0 ? " من " + fmt(inc) : "");
+    if (inc > 0 && t > inc + 0.005){ w.hidden = false; w.textContent = "مجموع الحدود يزيد على الدخل بـ " + fmt(t - inc) + " ريال."; }
+    else if (inc > 0 && t < inc - 0.005){ w.hidden = false; w.textContent = "بقي " + fmt(inc - t) + " ريال من الدخل بلا بند."; }
+    else w.hidden = true;
+  }
+  $("c-list").addEventListener("input", function(ev){
+    var el = ev.target, i = Number(el.dataset.i); if (!cfgDraft[i]) return;
+    if (el.dataset.k === "name") cfgDraft[i].name = el.value; else { var n = num(el.value); cfgDraft[i].limit = n > 0 ? n : 0; }
+    cfgTotal();
+  });
+  $("c-list").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-rm]"); if (!b) return; cfgDraft.splice(Number(b.dataset.rm), 1); drawCfg(); });
+  $("c-income").addEventListener("input", cfgTotal);
+  $("c-add").addEventListener("click", function(){ cfgDraft.push({id:newId(), name:"", limit:0}); drawCfg(); var el = $("c-name-" + (cfgDraft.length - 1)); if (el) el.focus(); });
+  $("c-cancel").addEventListener("click", function(){ $("cfg-dlg").close(); });
+  $("cfg-open").addEventListener("click", openCfg);
+  $("cfg-form").addEventListener("submit", async function(ev){
+    ev.preventDefault();
+    var inc = num($("c-income").value), w = $("c-warn");
+    var next = cleanCfg({income:inc > 0 ? inc : 0, cats:cfgDraft.map(function(c){ return {id:c.id, name:String(c.name).trim(), limit:c.limit}; }).filter(function(c){ return c.name; })});
+    if (!(inc > 0)){ w.hidden = false; w.textContent = "اكتب الدخل الشهري بالريال."; return; }
+    if (!next.cats.length){ w.hidden = false; w.textContent = "أضف بنداً واحداً على الأقل."; return; }
+    if (cfg && cfg.months) next.months = cfg.months;
+    if (cfg && cfg.adjs) next.adjs = cfg.adjs;
+    try {
+      await saveCfg(next);
+      $("cfg-dlg").close(); render();
+    } catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+  });
+
+  /* ---------- ميزانية خاصة للشهر المعروض: مبلغ متوفر لمرة واحدة يوزَّع على البنود بنسبة حدودها ---------- */
+  var onceSel = {};
+  function onceShares(){
+    var amt = num($("o-amt").value), cats = cfg.cats.filter(function(c){ return onceSel[c.id] && c.limit > 0; }), out = {};
+    var tot = cats.reduce(function(a, c){ return a + c.limit; }, 0);
+    if (!(amt > 0) || !tot) return out;
+    var used = 0; cats.forEach(function(c){ out[c.id] = Math.floor(amt * c.limit / tot); used += out[c.id]; });
+    var big = cats.slice().sort(function(a, b){ return b.limit - a.limit; })[0];
+    out[big.id] = Math.round((out[big.id] + amt - used) * 100) / 100;
+    return out;
+  }
+  function drawOnce(){
+    var sh = onceShares();
+    $("o-list").innerHTML = cfg.cats.map(function(c, i){
+      return '<label class="line" for="o-c-' + i + '"><input type="checkbox" id="o-c-' + i + '" data-id="' + esc(c.id) + '"' + (onceSel[c.id] ? " checked" : "") + '><span>' + esc(c.name) + '</span><b>' + (sh[c.id] != null ? fmt(sh[c.id]) : "—") + '</b></label>';
+    }).join("");
+  }
+  function openOnce(){
+    if (!cfg || !cfg.cats.length){ openCfg(); return; }
+    var cur = cfg.months && cfg.months[month];
+    $("o-h").textContent = "ميزانية خاصة: " + monthFmt.format(dateOf(month + "-01"));
+    $("o-amt").value = cur ? cur.income : "";
+    onceSel = {}; cfg.cats.forEach(function(c){ onceSel[c.id] = cur ? cur.limits[c.id] > 0 : true; });
+    $("o-clear").hidden = !cur; $("o-warn").hidden = true; drawOnce(); open($("once-dlg"));
+  }
+  $("once-open").addEventListener("click", openOnce);
+  $("o-cancel").addEventListener("click", function(){ $("once-dlg").close(); });
+  $("o-amt").addEventListener("input", drawOnce);
+  $("o-list").addEventListener("change", function(ev){ var el = ev.target; if (el.dataset.id){ onceSel[el.dataset.id] = el.checked; drawOnce(); } });
+  async function setOnce(val){
+    var months = {}; Object.keys(cfg.months || {}).forEach(function(k){ months[k] = cfg.months[k]; });
+    if (val) months[month] = val; else delete months[month];
+    var next = {income:cfg.income, cats:cfg.cats, months:months, adjs:cfg.adjs};
+    await saveCfg(cleanCfg(next));
+    $("once-dlg").close(); render();
+  }
+  $("once-form").addEventListener("submit", async function(ev){
+    ev.preventDefault();
+    var amt = num($("o-amt").value), sh = onceShares(), w = $("o-warn");
+    if (!(amt > 0)){ w.hidden = false; w.textContent = "اكتب المبلغ المتوفر بالريال."; return; }
+    if (!Object.keys(sh).length){ w.hidden = false; w.textContent = "اختر بنداً واحداً على الأقل."; return; }
+    try { await setOnce({income:Math.round(amt * 100) / 100, limits:sh, from:month === today().slice(0,7) ? today() : month + "-01"}); }
+    catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+  });
+  $("o-clear").addEventListener("click", async function(){
+    try { await setOnce(null); } catch(e){ $("o-warn").hidden = false; $("o-warn").textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+  });
+
+  $("m-prev").addEventListener("click", function(){ month = shift(month, -1); render(); });
+  $("m-next").addEventListener("click", function(){ month = shift(month, 1); render(); });
+  start();
+})();
+</script>
+</body>
+</html>

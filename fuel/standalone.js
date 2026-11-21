@@ -1,0 +1,1173 @@
+/* دفتر البنزين: طبقة التشغيل المستقل (خارج Claude).
+   توفّر نفس الواجهات التي يستخدمها البرنامج داخل Claude:
+   db (تخزين على الجهاز)، assets (صور الفواتير على الجهاز)، sample (قراءة الصور عبر Claude API بمفتاح المستخدم). */
+(function(){
+"use strict";
+if (window.claude) return;
+
+var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
+window.__savedLabel = "محفوظ على هذا الجهاز";
+var VERSION = "35";
+(function(){
+  var h = document.querySelector("h1");
+  if (!h) return;
+  var v = document.createElement("span");
+  v.id = "app-version"; v.textContent = " نسخة " + VERSION;
+  v.style.cssText = "font-size:.8rem;font-weight:500;color:var(--muted);white-space:nowrap";
+  h.appendChild(v);
+})();
+
+/* ---------- المستندات: localStorage ---------- */
+var store = {};
+try { store = JSON.parse(localStorage.getItem(DBKEY) || "{}") || {}; } catch(e){ store = {}; }
+var listeners = [];
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+/* طوابع زمنية لكل سجل وعلامات الحذف: أساس المزامنة بين الأجهزة */
+var METAKEY = "fuelapp-sync-meta", SYNCKEY = "fuelapp-sync-key", meta = {t:{}, d:{}};
+try { var m0 = JSON.parse(localStorage.getItem(METAKEY) || "{}") || {}; meta = {t:m0.t || {}, d:m0.d || {}}; } catch(e){}
+var onDirty = null;
+function touch(path){ meta.t[path] = Date.now(); delete meta.d[path]; if (onDirty) onDirty(); }
+function tomb(path){ delete meta.t[path]; meta.d[path] = Date.now(); if (onDirty) onDirty(); }
+function persist(){
+  try { localStorage.setItem(METAKEY, JSON.stringify(meta)); } catch(e){}
+  try { localStorage.setItem(DBKEY, JSON.stringify(store)); }
+  catch(e){ throw {code:"quota_exceeded", message:"storage full"}; }
+}
+function notify(){ listeners.slice().forEach(function(fn){ try { fn(); } catch(e){} }); }
+function newId(){
+  var s = "", c = "abcdefghijklmnopqrstuvwxyz0123456789";
+  for (var i = 0; i < 20; i++) s += c[Math.floor(Math.random() * c.length)];
+  return s;
+}
+var META = {fromCache:false, hasPendingWrites:false};
+function docSnap(path){
+  var d = store[path];
+  return {id:path.split("/").pop(), exists:d !== undefined, data:function(){ return d === undefined ? undefined : clone(d); }, metadata:META};
+}
+function colSnap(col){
+  var pre = col + "/";
+  var docs = Object.keys(store).filter(function(p){ return p.indexOf(pre) === 0 && p.slice(pre.length).indexOf("/") < 0; }).sort().map(docSnap);
+  return {docs:docs, size:docs.length, empty:!docs.length, docChanges:function(){ return []; }, metadata:META};
+}
+function subscribe(make, next){
+  var fn = function(){ next(make()); };
+  listeners.push(fn); setTimeout(fn, 0);
+  return function(){ listeners = listeners.filter(function(x){ return x !== fn; }); };
+}
+function write(fn){
+  return new Promise(function(resolve, reject){
+    try { fn(); persist(); } catch(e){ reject(e && e.code ? e : {code:"unavailable", message:String(e)}); return; }
+    notify(); resolve();
+  });
+}
+function docRef(path){
+  return {
+    id:path.split("/").pop(), path:path,
+    get:function(){ return Promise.resolve(docSnap(path)); },
+    set:function(d){ return write(function(){ store[path] = clone(d); touch(path); }); },
+    update:function(d){
+      return write(function(){
+        if (store[path] === undefined) throw {code:"invalid_argument", message:"missing document"};
+        Object.assign(store[path], clone(d)); touch(path);
+      });
+    },
+    delete:function(){ return write(function(){ if (store[path] !== undefined) tomb(path); delete store[path]; }); },
+    onSnapshot:function(next){ return subscribe(function(){ return docSnap(path); }, next); },
+    collection:function(p){ return colRef(path + "/" + p); }
+  };
+}
+function colRef(col){
+  return {
+    path:col,
+    doc:function(id){ return docRef(col + "/" + (id || newId())); },
+    add:function(d){ var r = docRef(col + "/" + newId()); return r.set(d).then(function(){ return r; }); },
+    get:function(){ return Promise.resolve(colSnap(col)); },
+    onSnapshot:function(next){ return subscribe(function(){ return colSnap(col); }, next); }
+  };
+}
+var db = {doc:docRef, collection:colRef};
+
+/* ---------- صور الفواتير: IndexedDB ---------- */
+var idbP = null;
+function idb(){
+  if (!idbP) idbP = new Promise(function(resolve, reject){
+    var rq = indexedDB.open("fuelapp-blobs", 1);
+    rq.onupgradeneeded = function(){ rq.result.createObjectStore("b"); };
+    rq.onsuccess = function(){ resolve(rq.result); };
+    rq.onerror = function(){ reject({code:"store_unavailable", message:"indexedDB"}); };
+  });
+  return idbP;
+}
+function tx(mode, fn){
+  return idb().then(function(d){
+    return new Promise(function(resolve, reject){
+      var t = d.transaction("b", mode), rq = fn(t.objectStore("b"));
+      t.oncomplete = function(){ resolve(rq && rq.result); };
+      t.onerror = t.onabort = function(){ reject({code:"quota_or_state", message:"blob store"}); };
+    });
+  });
+}
+var urls = {};
+var assets = {
+  upload:function(blob){
+    var id = newId() + newId().slice(0, 12);
+    return tx("readwrite", function(s){ return s.put(blob, id); }).then(function(){
+      return {id:id, url:(urls[id] = URL.createObjectURL(blob)), sizeBytes:blob.size, contentType:blob.type};
+    });
+  },
+  delete:function(id){ return tx("readwrite", function(s){ return s.delete(id); }).then(function(){ return {deleted:true}; }); },
+  list:function(){ return Promise.resolve({assets:[], usage:{files:0, bytes:0, maxFiles:0, maxBytes:0}}); }
+};
+window.__blobUrl = function(id){
+  if (urls[id]) return Promise.resolve(urls[id]);
+  return tx("readonly", function(s){ return s.get(id); }).then(function(b){
+    if (!b) throw {code:"not_found"};
+    return (urls[id] = URL.createObjectURL(b));
+  });
+};
+
+/* ---------- قراءة الصور: Claude API بمفتاح المستخدم ---------- */
+function toJpegB64(blob){
+  return createImageBitmap(blob).then(function(bmp){
+    var sc = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+    var c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.85).split(",")[1];
+  }, function(){ throw {code:"image_rejected", message:"cannot decode image"}; });
+}
+function parseJson(text){
+  var t = String(text || "").trim(), m;
+  try { return JSON.parse(t); } catch(e){}
+  m = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (m){ try { return JSON.parse(m[1]); } catch(e){} }
+  var a = t.search(/[{\[]/), b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+  if (a >= 0 && b > a){ try { return JSON.parse(t.slice(a, b + 1)); } catch(e){} }
+  throw {code:"invalid_json", message:"no JSON in reply", text:t};
+}
+async function ask(input, opts){
+  var key = "";
+  try { key = localStorage.getItem(APIKEY) || ""; } catch(e){}
+  if (!key) throw {code:"no_key", message:"no API key"};
+  var model = DEF_MODEL;
+  try { model = localStorage.getItem(MODELKEY) || DEF_MODEL; } catch(e){}
+  var imgs = opts && opts.images ? [].slice.call(opts.images.length === undefined ? [opts.images] : opts.images) : [];
+  var content = [];
+  for (var i = 0; i < imgs.length; i++){
+    content.push({type:"image", source:{type:"base64", media_type:"image/jpeg", data:await toJpegB64(imgs[i])}});
+  }
+  content.push({type:"text", text:String(input)});
+  var res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{"content-type":"application/json", "x-api-key":key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:model, max_tokens:1024, messages:[{role:"user", content:content}]})
+    });
+  } catch(e){ throw {code:"upstream_error", message:"network"}; }
+  if (!res.ok){
+    var code = res.status === 401 || res.status === 403 ? "bad_key" : res.status === 429 ? "rate_limited" : "upstream_error";
+    throw {code:code, message:"HTTP " + res.status};
+  }
+  var j = await res.json();
+  var text = (j.content || []).filter(function(c){ return c.type === "text"; }).map(function(c){ return c.text; }).join("");
+  if (!text.trim()) throw {code:"empty_completion", message:"empty"};
+  return text;
+}
+function sample(input, opts){ return ask(input, opts).then(function(t){ return {text:t, truncated:false, modelTierApplied:"default"}; }); }
+/* ---------- قراءة الصور عبر Gemini بمفتاح المستخدم المجاني ---------- */
+var GKEY = "fuelapp-gemini-key", GMODEL = "fuelapp-gemini-model", DEF_GMODEL = "gemini-3.8-flash";
+function lsGet(k){ try { return localStorage.getItem(k) || ""; } catch(e){ return ""; } }
+function toast(msg){
+  var host = document.querySelector("dialog[open]") || document.body, t = document.createElement("div");
+  t.setAttribute("role", "status"); t.textContent = msg;
+  t.style.cssText = "position:sticky;bottom:8px;margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--warn-soft);color:var(--warn);font-size:.9rem;font-weight:500;z-index:5;overflow-wrap:anywhere";
+  host.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 30000);
+}
+async function jpegB64(blob, max){
+  var bmp;
+  try { bmp = await createImageBitmap(blob); } catch(e){ throw {code:"image_rejected", message:"cannot decode image"}; }
+  var sc = Math.min(1, max / Math.max(bmp.width, bmp.height)), c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.9).split(",")[1];
+}
+/* موديلات مجانية بديلة تُجرَّب بالترتيب إذا كان الموديل المختار مزدحماً أو تجاوز حدّه */
+var GEM_FALLBACK = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite"], GOK = "fuelapp-gemini-ok";
+async function geminiOnce(model, key, parts){
+  var url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent";
+  async function post(withConfig){
+    var body = {contents:[{parts:parts}]};
+    if (withConfig) body.generationConfig = {temperature:0, responseMimeType:"application/json"};
+    var ctl = new AbortController(), timer = setTimeout(function(){ ctl.abort(); }, 45000);
+    try { return await fetch(url, {method:"POST", headers:{"content-type":"application/json", "x-goog-api-key":key}, body:JSON.stringify(body), signal:ctl.signal}); }
+    catch(e){ throw {code:"upstream_error", next:true, message:(e && e.name === "AbortError") ? "timeout" : String(e && e.message || e).slice(0, 120)}; }
+    finally { clearTimeout(timer); }
+  }
+  async function detail(r){
+    var t = ""; try { t = await r.text(); } catch(e){}
+    var msg = ""; try { msg = JSON.parse(t).error.message || ""; } catch(e){ msg = t; }
+    return {raw:t, msg:"HTTP " + r.status + (msg ? ": " + String(msg).slice(0, 160) : "")};
+  }
+  var res = await post(true), d;
+  if (!res.ok){
+    d = await detail(res);
+    if (/free tier is not available|FAILED_PRECONDITION/i.test(d.raw)) throw {code:"gemini_region", message:d.msg};
+    if (/api key|API_KEY|UNAUTHENTICATED/i.test(d.raw) || res.status === 401) throw {code:"bad_gemini_key", message:d.msg};
+    if (res.status === 403) throw {code:"bad_gemini_key", message:d.msg};
+    if (res.status === 429) throw {code:"rate_limited", next:true, message:d.msg};
+    if (res.status === 404) throw {code:"bad_gemini_model", next:true, message:d.msg};
+    if (res.status === 400){ res = await post(false); if (!res.ok){ d = await detail(res); throw {code:"gemini_http", next:true, message:d.msg}; } }
+    else throw {code:"gemini_http", next:true, message:d.msg};
+  }
+  var j = await res.json(), c = j.candidates && j.candidates[0];
+  var text = ((c && c.content && c.content.parts) || []).filter(function(p){ return !p.thought; }).map(function(p){ return p.text || ""; }).join("");
+  if (!text.trim()) throw {code:"empty_completion", next:true, message:"empty " + ((c && c.finishReason) || (j.promptFeedback && j.promptFeedback.blockReason) || "")};
+  return text;
+}
+async function askGemini(input, opts){
+  var key = lsGet(GKEY);
+  if (!key) throw {code:"no_key", message:"no Gemini key"};
+  var imgs = opts && opts.images ? [].slice.call(opts.images.length === undefined ? [opts.images] : opts.images) : [], parts = [];
+  for (var i = 0; i < imgs.length; i++) parts.push({inline_data:{mime_type:"image/jpeg", data:await jpegB64(imgs[i], 1800)}});
+  parts.push({text:String(input)});
+  var models = [], last;
+  [lsGet(GOK), lsGet(GMODEL) || DEF_GMODEL].concat(GEM_FALLBACK).forEach(function(m){ if (m && models.indexOf(m) < 0) models.push(m); });
+  for (var k = 0; k < models.length; k++){
+    try {
+      var text = await geminiOnce(models[k], key, parts);
+      try { localStorage.setItem(GOK, models[k]); } catch(e){}
+      return text;
+    } catch(e){
+      last = e; if (e && e.message) e.message = models[k] + " " + e.message;
+      if (!e || !e.next) throw e;
+    }
+  }
+  throw last;
+}
+var GEM_MSG = {bad_gemini_key:"مفتاح Gemini غير صحيح أو غير مفعّل. راجعه من الإعدادات أسفل الصفحة.", rate_limited:"تم بلوغ الحد المجاني لـ Gemini الآن. حاول بعد قليل.",
+  bad_gemini_model:"اسم موديل Gemini غير صحيح. راجعه من الإعدادات أسفل الصفحة.", upstream_error:"تعذّر الوصول إلى Gemini من هذا الجهاز.", gemini_http:"رفض Gemini الطلب.", gemini_region:"الباقة المجانية لـ Gemini غير متاحة لهذا الحساب أو البلد."};
+
+/* ---------- القراءة المجانية على الجهاز: Tesseract.js (بدون مفتاح) ---------- */
+var TESS = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
+var tessP = null, workers = {};
+function loadTess(){
+  if (!tessP) tessP = new Promise(function(resolve, reject){
+    if (window.Tesseract) return resolve();
+    var s = document.createElement("script");
+    s.src = (window.__ocr && window.__ocr.script) || TESS;
+    s.onload = function(){ resolve(); };
+    s.onerror = function(){ tessP = null; reject({code:"upstream_error", message:"ocr script"}); };
+    document.head.appendChild(s);
+  });
+  return tessP;
+}
+function within(p, ms){
+  return Promise.race([p, new Promise(function(_, reject){ setTimeout(function(){ reject({code:"upstream_error", message:"ocr timeout"}); }, ms); })]);
+}
+function getWorker(langs){
+  var k = langs.join("+");
+  if (!workers[k]){
+    workers[k] = loadTess().then(function(){
+      var o = {};
+      if (window.__ocr){ o.workerPath = window.__ocr.workerPath; o.corePath = window.__ocr.corePath; o.langPath = window.__ocr.langPath; }
+      return within(window.Tesseract.createWorker(langs, 1, o), 120000);
+    }).catch(function(e){ delete workers[k]; throw e && e.code ? e : {code:"upstream_error", message:"ocr init"}; });
+  }
+  return workers[k];
+}
+async function prepImage(blob, opt){
+  opt = opt || {};
+  var bmp;
+  try { bmp = await createImageBitmap(blob); } catch(e){ throw {code:"image_rejected", message:"cannot decode image"}; }
+  var big = Math.max(bmp.width, bmp.height), mx = opt.max || 2200, sc = big > mx ? mx / big : big < 1100 && !opt.max ? Math.min(2, 1100 / big) : 1;
+  var w = Math.round(bmp.width * sc), h = Math.round(bmp.height * sc), rot = opt.rot || 0;
+  var c = document.createElement("canvas");
+  c.width = rot % 180 ? h : w; c.height = rot % 180 ? w : h;
+  var x = c.getContext("2d");
+  x.translate(c.width / 2, c.height / 2); x.rotate(rot * Math.PI / 180); x.drawImage(bmp, -w / 2, -h / 2, w, h);
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  var W = c.width, H = c.height, im = x.getImageData(0, 0, W, H), d = im.data, n = W * H, g = new Uint8ClampedArray(n), sum = 0, i;
+  for (i = 0; i < n; i++){ g[i] = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114; sum += g[i]; }
+  if (sum / n < 110) for (i = 0; i < n; i++) g[i] = 255 - g[i];
+  if (opt.thresh){
+    /* عتبة محلية (Bradley) لإزالة الخلفيات المنقوشة والظلال */
+    var I = new Float64Array((W + 1) * (H + 1)), r = Math.max(8, Math.round(W / 24)), X, Y;
+    for (Y = 1; Y <= H; Y++){ var row = 0; for (X = 1; X <= W; X++){ row += g[(Y - 1) * W + X - 1]; I[Y * (W + 1) + X] = I[(Y - 1) * (W + 1) + X] + row; } }
+    var out = new Uint8ClampedArray(n);
+    for (Y = 0; Y < H; Y++) for (X = 0; X < W; X++){
+      var x0 = Math.max(0, X - r), x1 = Math.min(W, X + r + 1), y0 = Math.max(0, Y - r), y1 = Math.min(H, Y + r + 1);
+      var m = (I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+      out[Y * W + X] = g[Y * W + X] < m * 0.85 ? 0 : 255;
+    }
+    g = out;
+  }
+  for (i = 0; i < n; i++){ d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = g[i]; d[i * 4 + 3] = 255; }
+  x.putImageData(im, 0, 0);
+  return {canvas:c, portrait:H > W * 1.15};
+}
+async function ocr(blob, langs, opt){
+  var w = await getWorker(langs), p = await prepImage(blob, opt);
+  var r = await within(w.recognize(p.canvas), 120000);
+  return {text:normDigits((r && r.data && r.data.text) || ""), portrait:p.portrait};
+}
+function normDigits(t){
+  return String(t).replace(/[٠-٩]/g, function(d){ return "٠١٢٣٤٥٦٧٨٩".indexOf(d); })
+    .replace(/[۰-۹]/g, function(d){ return "۰۱۲۳۴۵۶۷۸۹".indexOf(d); }).replace(/٫/g, ".").replace(/٬/g, ",")
+    .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
+}
+function toNum(s){ var n = Number(String(s).replace(/[,\s]/g, "")); return isFinite(n) ? n : null; }
+function pad(n){ return String(n).padStart(2, "0"); }
+function findDate(t, future){
+  var m, y, mo, d;
+  if ((m = t.match(/(20\d{2})\s?[-\/.]\s?(\d{1,2})\s?[-\/.]\s?(\d{1,2})/))){ y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else if ((m = t.match(/(\d{1,2})\s?[-\/.]\s?(\d{1,2})\s?[-\/.]\s?(20\d{2})/))){ d = +m[1]; mo = +m[2]; y = +m[3]; }
+  else if ((m = t.match(/(?:^|[^\d])(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2})(?!\d)/))){ d = +m[1]; mo = +m[2]; y = 2000 + (+m[3]); }
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  var s = y + "-" + pad(mo) + "-" + pad(d);
+  if (!future && new Date(s + "T00:00") - Date.now() > 864e5) return null;
+  return {date:s, raw:m[0]};
+}
+function findTime(t){
+  var m = t.match(/(?:^|[^\d:])([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\s*(AM|PM|ص|م)?/i);
+  if (!m) return null;
+  var h = +m[1], ap = (m[3] || "").toLowerCase();
+  if ((ap === "pm" || ap === "م") && h < 12) h += 12;
+  if ((ap === "am" || ap === "ص") && h === 12) h = 0;
+  return pad(h) + ":" + m[2];
+}
+var CUR = "(?:SAR|S\\.?R\\.?|ر\\.?\\s?س|ريال)", NUM = "(\\d[\\d,]*(?:\\.\\d{1,2})?)";
+function parseBank(t){
+  var lines = t.split(/\n+/), best = null, first = null;
+  var re = new RegExp(CUR + "\\s*:?\\s*" + NUM + "|" + NUM + "\\s*" + CUR, "gi");
+  lines.forEach(function(line){
+    if (/رصيد|المتاح|balance|avail/i.test(line) && !/مبلغ|amount|شراء|purchase/i.test(line)) return;
+    var cut = line.split(/رصيد|المتاح|balance|avail/i)[0], m;
+    re.lastIndex = 0;
+    while ((m = re.exec(cut))){
+      var v = toNum(m[1] || m[2]);
+      if (!(v > 0)) continue;
+      if (first == null) first = v;
+      if (best == null && /مبلغ|amount|شراء|purchase|خصم|debit|بـ|paid|دفع/i.test(cut)) best = v;
+    }
+  });
+  if (best == null) best = first;
+  if (best == null){
+    var m2 = t.match(/(?:مبلغ|amount)\D{0,12}(\d[\d,]*(?:\.\d{1,2})?)/i);
+    if (m2) best = toNum(m2[1]);
+  }
+  var d = findDate(t), tm = findTime(d ? t.replace(d.raw, " ") : t), now = new Date();
+  return {amount_sar:best, datetime:d ? d.date + "T" + (tm || pad(now.getHours()) + ":" + pad(now.getMinutes())) : null};
+}
+function parseDash(t){
+  var out = {odometer_km:null, range_km:null, avg_value:null, avg_unit:null}, m;
+  if ((m = t.match(/(\d{1,2}[.,]\d)\s*(km\s*\/\s*l|l\s*\/\s*100\s*km)/i))){
+    out.avg_value = Number(m[1].replace(",", ".")); out.avg_unit = /^l/i.test(m[2]) ? "l/100km" : "km/l";
+    t = t.replace(m[0], " ");
+  }
+  t = t.replace(/\d{1,2}:\d{2}/g, " ");
+  if ((m = t.match(/(?:odo|odometer|total)\D{0,10}(\d[\d,\s]{3,8}\d)/i))) out.odometer_km = toNum(m[1]);
+  if (out.odometer_km == null){
+    /* لا يُقبل إلا رقم ملتصق بوحدة km حتى لا تُلتقط أرقام عداد السرعة */
+    var reO = /(?:^|[^\d,.])(\d[\d,]{3,7})\s*km(?!\s*\/)/gi, mo, all = [];
+    while ((mo = reO.exec(t))){ var vo = toNum(mo[1]); if (vo >= 1000 && vo <= 999999) all.push(vo); }
+    if (all.length) out.odometer_km = Math.max.apply(null, all);
+  }
+  if ((m = t.match(/(?:range|dte|empty|المدى)\D{0,15}(\d{2,4})(?!\d)/i))) out.range_km = toNum(m[1]);
+  if (out.range_km == null){
+    var re = /(?:^|[^\d,])(\d{2,4})\s*km(?!\s*\/)/gi, k;
+    while ((k = re.exec(t))){ var v = toNum(k[1]); if (v !== out.odometer_km && v < 1500){ out.range_km = v; break; } }
+  }
+  return out;
+}
+function parseInv(t){
+  var out = {date:null, total_sar:null, odometer_km:null, shop:null, items:null}, d = findDate(t), m, tot = [];
+  if (d) out.date = d.date;
+  t.split(/\n+/).forEach(function(line){
+    if (/الإجمالي|الاجمالي|المجموع|الصافي|المستحق|total|net|amount due|grand/i.test(line))
+      (line.match(/\d[\d,]*\.\d{1,2}|\d[\d,]{1,7}/g) || []).forEach(function(s){ var v = toNum(s); if (v > 0 && v < 1000000) tot.push(v); });
+  });
+  if (!tot.length) (t.match(/\d[\d,]*\.\d{2}(?!\d)/g) || []).forEach(function(s){ var v = toNum(s); if (v > 0 && v < 1000000) tot.push(v); });
+  if (tot.length) out.total_sar = Math.max.apply(null, tot);
+  if ((m = t.match(/(?:عداد|ممشى|الكيلومترات|odometer|mileage|\bkm\b)\D{0,12}(\d[\d,]{3,7})/i))) out.odometer_km = toNum(m[1]);
+  var first = t.split(/\n+/).map(function(s){ return s.trim(); }).filter(function(s){ return /[A-Za-zء-ي]{3}/.test(s); })[0];
+  if (first) out.shop = first.slice(0, 40);
+  return out;
+}
+function parseStk(t){
+  var out = {date:null, odometer_km:null, next_km:null, oil:null}, d = findDate(t), m;
+  if (d){ out.date = d.date; t = t.replace(d.raw, " "); }
+  if ((m = t.match(/\d{1,2}\s?W\s?-?\s?\d{2}/i))){ out.oil = m[0].replace(/\s/g, "").toUpperCase(); t = t.replace(m[0], " "); }
+  var nums = (t.match(/\d[\d,]{3,7}/g) || []).map(toNum).filter(function(n){ return n >= 1000 && n <= 999999; }).sort(function(a, b){ return a - b; });
+  for (var i = 0; i < nums.length && out.next_km == null; i++) for (var j = i + 1; j < nums.length; j++){
+    var diff = nums[j] - nums[i];
+    if (diff >= 1000 && diff <= 20000){ out.odometer_km = nums[i]; out.next_km = nums[j]; break; }
+  }
+  if (out.odometer_km == null && nums.length) out.odometer_km = nums[nums.length - 1];
+  return out;
+}
+var MAKES = [["تويوتا","toyota"],["هيونداي","hyundai"],["نيسان","nissan"],["كيا","kia"],["فورد","ford"],["شفروليه","chevrolet"],["هوندا","honda"],
+  ["لكزس","lexus"],["مازدا","mazda"],["ميتسوبيشي","mitsubishi"],["جي ام سي","gmc"],["مرسيدس","mercedes"],["بي ام دبليو","bmw"],["جيلي","geely"],
+  ["شانجان","changan"],["ام جي","mg"],["هافال","haval"],["سوزوكي","suzuki"],["ايسوزو","isuzu"],["دودج","dodge"],["جيب","jeep"],["اودي","audi"],
+  ["فولكس واجن","volkswagen"],["رينو","renault"],["جينيسيس","genesis"],["لاند روفر","land rover"],["شيري","chery"],["جاك","jac"],
+  ["كاديلاك","cadillac"],["انفينيتي","infiniti"],["بورش","porsche"],["سوبارو","subaru"],["بيجو","peugeot"],["كرايسلر","chrysler"],["لينكولن","lincoln"],
+  ["جاكوار","jaguar"],["فولفو","volvo"],["تسلا","tesla"],["بي واي دي","byd"],["جيتور","jetour"],["اكسيد","exeed"],["هونشي","hongqi"],["جي اي سي","gac"],
+  ["بايك","baic"],["فوتون","foton"],["دايهاتسو","daihatsu"],["رام","ram"],["ميني","mini"],["فيات","fiat"],["ماهيندرا","mahindra"],["تاتا","tata"]];
+var COLORS = ["ابيض","اسود","فضي","رمادي","رصاصي","احمر","ازرق","بني","ذهبي","اخضر","بيج","لؤلؤي","عنابي","كحلي","برتقالي","اصفر","برونزي","سماوي","شامبين","زيتي"];
+var PLATE_EN = {A:"ا",B:"ب",J:"ح",D:"د",R:"ر",S:"س",X:"ص",T:"ط",E:"ع",G:"ق",K:"ك",L:"ل",Z:"م",N:"ن",H:"هـ",U:"و",V:"ي"};
+function normAr(t){
+  return String(t).replace(/[ً-ْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+}
+var NEXT_LABEL = /مارك[هت]|طراز|وزن|حمول[هت]|اللون|سن[هت]|نوع|رقم|هوي[هت]|المالك|المستخدم/;
+function lineVal(t, label, drop){
+  var ls = t.split(/\n+/);
+  for (var i = 0; i < ls.length; i++){
+    var m = ls[i].match(label);
+    if (!m) continue;
+    var after = ls[i].slice(m.index + m[0].length), before = ls[i].slice(0, m.index);
+    var cut = after.replace(drop, " "), n = cut.search(NEXT_LABEL);
+    if (n >= 0) cut = cut.slice(0, n);
+    var v = cut.replace(/[:\-|.,،()]/g, " ").replace(/\s+/g, " ").trim();
+    if (!v){ /* القيمة قبل العنوان في بعض القراءات */
+      var bb = before.replace(drop, " "), k = -1, mm, re = new RegExp(NEXT_LABEL.source, "g");
+      while ((mm = re.exec(bb))) k = mm.index + mm[0].length;
+      v = (k >= 0 ? bb.slice(k) : bb).replace(/[:\-|.,،()]/g, " ").replace(/\s+/g, " ").trim();
+    }
+    if (v) return v;
+  }
+  return null;
+}
+function arWords(v){ return (v.match(/[ء-ي]{2,}/g) || []).join(" "); }
+var WMI = [["KNA|KNB|KNC|KND|KNE|U5Y|U6Y|3KP|5XX|5XY","كيا"],["KMH|KMF|KMJ|KM8|TMA|NLH|MAL|5NP|5NM","هيونداي"],["JTH|JTJ|2T2|58A","لكزس"],
+  ["JT|MR0|MR1|MHF|MHK|NMT|6T1|2T1|2T3|4T1|4T3|5TD|5TF|5YF|3TM|3TY|SB1|VNK","تويوتا"],["JNK|JNR|5N3","انفينيتي"],["JN|1N4|1N6|3N1|3N6|5N1|MNT|MDH|VSK|SJN","نيسان"],
+  ["JH4|19U","اكيورا"],["JHM|JHL|1HG|2HG|2HK|5J6|5FN|19X|SHH|MRH|LVH","هوندا"],["1FA|1FM|1FT|1FD|2FM|3FA|3FM|MAJ|WF0|NM0","فورد"],
+  ["1G1|1GC|1GN|2G1|3G1|3GN|KL1|KL7|KL8|LSG","شفروليه"],["1GT|1GK|2GT|3GT|3GK","جي ام سي"],["1GY|1G6","كاديلاك"],
+  ["WDB|WDC|WDD|WDF|W1K|W1N|W1V|4JG|55S","مرسيدس"],["WBA|WBS|WBX|WBY|5UX|5UJ","بي ام دبليو"],["WAU|WA1|TRU","اودي"],["WVW|WVG|WV1|WV2|3VW|1VW","فولكس واجن"],
+  ["WP0|WP1","بورش"],["JM|MM0|MM6|MM7|3MZ","مازدا"],["JA|JMB|JMY|MMB|MMA|ML3","ميتسوبيشي"],["JS|MA3|TSM","سوزوكي"],["JF","سوبارو"],["JAA|JAL|MPA","ايسوزو"],
+  ["SAL","لاند روفر"],["SAJ","جاكوار"],["1C4|1J4|1J8|3C4","جيب"],["2C3|1C3|2B3","دودج"],["1C6|3C6|3D7","رام"],["5YJ|7SA|LRW|XP7","تسلا"],
+  ["L6T|LB3|LJ1","جيلي"],["LS5|LS4|LDC","شانجان"],["LGW|LGX","هافال"],["LSJ","ام جي"],["LVV|LVT|LNN","شيري"],["LC0|LGX","بي واي دي"],
+  ["LJD|LJX","جاك"],["LFP|LFB","هونشي"],["LMG|LMW","جي اي سي"],["VF1|VF2","رينو"],["VF3","بيجو"],["ZFA","فيات"],["YV1|YV4","فولفو"],["5LM|1LN","لينكولن"]];
+var VIN_YEAR = "ABCDEFGHJKLMNPRSTVWXY123456789";
+function fromVin(out){
+  if (!out.vin) return;
+  if (!out.make) for (var i = 0; i < WMI.length; i++) if (new RegExp("^(?:" + WMI[i][0] + ")").test(out.vin)){ out.make = WMI[i][1]; break; }
+  if (!out.year){
+    var k = VIN_YEAR.indexOf(out.vin.charAt(9)), now = new Date().getFullYear();
+    if (k >= 0){ var y = 2010 + k; while (y > now + 1) y -= 30; if (y >= 1981) out.year = y; }
+  }
+}
+function parseReg(raw){
+  var out = {make:null, model:null, year:null, plate:null, color:null, vin:null, expiry:null}, m, t = normAr(raw), low = t.toLowerCase(), i;
+  /* الماركة: من القائمة المعروفة ثم من عنوان الحقل */
+  for (i = 0; i < MAKES.length; i++)
+    if (new RegExp("(^|[^\\u0621-\\u064A])" + normAr(MAKES[i][0]) + "([^\\u0621-\\u064A]|$)").test(t) || new RegExp("\\b" + MAKES[i][1] + "\\b").test(low)){ out.make = MAKES[i][0]; break; }
+  var v0, labelMake = null;
+  if (!out.make && (v0 = lineVal(t, /مارك[هت]|(?:ال)?صانع/, /المركب[هت]/g)) && (v0 = arWords(v0)) && v0.length >= 3) labelMake = v0.slice(0, 22);
+  /* الطراز */
+  if ((v0 = lineVal(t, /(?:ال)?طراز|موديل/, /المركب[هت]/g))){
+    var mv = arWords(v0) || (/^[A-Za-z0-9 ]{2,25}$/.test(v0) && !/^\d+$/.test(v0) ? v0 : "");
+    if (mv) out.model = mv.slice(0, 25);
+  }
+  /* اللون */
+  for (i = 0; i < COLORS.length && !out.color; i++) if (new RegExp("(^|[^\\u0621-\\u064A])" + COLORS[i] + "([^\\u0621-\\u064A]|$)").test(t)) out.color = COLORS[i];
+  if (!out.color && (v0 = lineVal(t, /(?:ال)?لون/, /الاساسي|المركب[هت]|الفرعي/g)) && (m = v0.match(/[ء-ي]{3,10}/))) out.color = m[0];
+  /* رقم الهيكل */
+  var vinLine = (raw.split(/\n+/).filter(function(l){ return /هيكل|vin|chassis/i.test(l); })[0] || "").toUpperCase();
+  var toks = (vinLine.match(/[A-Z0-9]{17}/g) || []).concat(raw.toUpperCase().match(/[A-Z0-9]{17}/g) || []);
+  for (i = 0; i < toks.length && !out.vin; i++){
+    var v = toks[i].replace(/[OQ]/g, "0").replace(/I/g, "1");
+    if (/[A-Z]/.test(v) && /\d{4}$/.test(v)) out.vin = v;
+  }
+  if (!out.vin){
+    /* رقم هيكل مقسوم إلى جزأين أو معكوس الترتيب في سطر عنوانه */
+    var vl = raw.split(/\n+/).filter(function(l){ return /هيكل|vin|chassis/i.test(l); })[0] || "";
+    var parts = vl.toUpperCase().match(/[A-Z0-9]{3,}/g) || [];
+    for (i = 0; i + 1 < parts.length && !out.vin; i++) if (parts[i].length + parts[i + 1].length === 17){
+      var c1 = parts[i] + parts[i + 1], c2 = parts[i + 1] + parts[i];
+      var pick = /\d{4}$/.test(c1) && !/\d{4}$/.test(c2) ? c1 : /\d{4}$/.test(c2) && !/\d{4}$/.test(c1) ? c2 : /^[A-Z]/.test(c1) ? c1 : c2;
+      pick = pick.replace(/[OQ]/g, "0").replace(/I/g, "1");
+      if (/[A-Z]/.test(pick) && /\d{4}$/.test(pick)) out.vin = pick;
+    }
+  }
+  /* سنة الصنع */
+  if ((m = t.match(/(?:سن[هت]\s*الصنع|الصنع|year)\D{0,15}(19[89]\d|20[0-3]\d)(?!\d)/i))) out.year = +m[1];
+  fromVin(out);
+  if (!out.make && labelMake) out.make = labelMake;
+  /* اللوحة: اللاتينية أولاً لأنها أدق في القراءة، ثم سطر عنوان اللوحة، ثم أي نمط عربي */
+  var body = out.vin ? raw.toUpperCase().replace(out.vin, " ") : raw.toUpperCase();
+  var L = "[ABJDRSXTEGKLZNHUV]", num, ls;
+  var pm = body.match(new RegExp("(?:^|[^A-Z0-9])(" + L + ")\\s?(" + L + ")\\s?(" + L + ")\\s{0,3}(\\d{1,4})(?![A-Z0-9])"));
+  if (pm){ ls = [pm[1], pm[2], pm[3]]; num = pm[4]; }
+  else if ((pm = body.match(new RegExp("(?:^|[^A-Z0-9])(\\d{1,4})\\s{0,3}(" + L + ")\\s?(" + L + ")\\s?(" + L + ")(?![A-Z0-9])")))){ ls = [pm[2], pm[3], pm[4]]; num = pm[1]; }
+  if (ls && ls.join("") !== "KSA") out.plate = ls.reverse().map(function(c){ return PLATE_EN[c]; }).join(" ") + " " + num;
+  if (!out.plate && (m = (t.split(/\n+/).filter(function(l){ return /لوح/.test(l); })[0] || "").replace(/رقم|اللوح[هت]|لوح[هت]/g, " ").match(/^[^\d]*?((?:[ء-ي]\s*){3,4})\s*(\d{1,4})(?!\d)|(?:^|[^\d])(\d{1,4})\s*((?:[ء-ي]\s*){3,4})\s*$/))){
+    var lt = (m[1] || m[4]).replace(/\s/g, "").split(""), dg = m[2] || m[3];
+    if (lt.length === 4) lt = lt.filter(function(ch, k){ return k === 0 || ch !== lt[k - 1]; });
+    if (lt.length === 3) out.plate = lt.join(" ") + " " + dg;
+  }
+  if (!out.plate){
+    if ((m = t.match(/(?:^|[^\d])(\d{1,4})\s+([ء-ي])\s+([ء-ي])\s+([ء-ي])(?![ء-ي])/)))
+      out.plate = m[2] + " " + m[3] + " " + m[4] + " " + m[1];
+    else if ((m = t.match(/(?:^|[^ء-ي])([ء-ي])\s+([ء-ي])\s+([ء-ي])\s+(\d{1,4})(?!\d)/)))
+      out.plate = m[1] + " " + m[2] + " " + m[3] + " " + m[4];
+  }
+  /* تاريخ الانتهاء بالميلادي */
+  var el = t.split(/\n+/).filter(function(l){ return /انتهاء|expiry|expire/i.test(l); })[0];
+  if (el){ var d = findDate(el, true); if (d) out.expiry = d.date; }
+  return out;
+}
+function kindOf(input){
+  var s = String(input);
+  return s.indexOf('"make"') >= 0 ? "reg" : s.indexOf('"next_km"') >= 0 ? "stk" : s.indexOf('"total_sar"') >= 0 ? "inv"
+    : s.indexOf('"amount_sar"') >= 0 ? "bank" : s.indexOf('"range_km"') >= 0 ? "dash" : null;
+}
+var PARSE = {reg:parseReg, stk:parseStk, inv:parseInv, bank:parseBank, dash:parseDash};
+window.__ocrParse = PARSE;
+function hasKey(){ try { return !!localStorage.getItem(APIKEY); } catch(e){ return false; } }
+function filled(o){ var n = 0; for (var k in o) if (o[k] != null && o[k] !== "") n++; return n; }
+function merge(a, b){ for (var k in b) if (a[k] == null || a[k] === "") a[k] = b[k]; return a; }
+var REG_WORDS = /المركب|اللون|الصنع|الهيكل|اللوح|مارك|طراز|التسجيل|المالك|وزار|المملك|REGISTRATION|KINGDOM|MINISTRY|VEHICLE|INTERIOR/gi;
+function regScore(t){ return (normAr(t).match(REG_WORDS) || []).length + (/[A-HJ-NPR-Z0-9]{13}\d{4}/.test(t.toUpperCase()) ? 2 : 0); }
+async function readReg(img){
+  var bmp, portrait = false;
+  try { bmp = await createImageBitmap(img); portrait = bmp.height > bmp.width * 1.15; } catch(e){ throw {code:"image_rejected", message:"cannot decode image"}; }
+  /* تحديد اتجاه البطاقة بقراءة سريعة مصغّرة، ثم القراءة الكاملة على الاتجاه الصحيح فقط */
+  var order = portrait ? [90, 270, 0, 180] : [0, 180, 90, 270], best = null, log = [];
+  for (var i = 0; i < order.length; i++){
+    var q = await ocr(img, ["eng", "ara"], {rot:order[i], max:1400}), sc = regScore(q.text);
+    log.push("rot " + order[i] + " score " + sc);
+    if (!best || sc > best.sc) best = {rot:order[i], sc:sc};
+    if (sc >= 3) break;
+  }
+  var r1 = await ocr(img, ["eng", "ara"], {rot:best.rot}), res = parseReg(r1.text);
+  window.__ocrLast = log.join(", ") + "\n" + r1.text;
+  if (!res.make || !res.model || !res.year || !res.plate || !res.color || !res.vin){
+    var r2 = await ocr(img, ["eng", "ara"], {rot:best.rot, thresh:true});
+    window.__ocrLast += "\n-----\n" + r2.text;
+    res = merge(res, parseReg(r2.text));
+  }
+  if (!res.vin || !res.plate){
+    var r3 = await ocr(img, ["eng"], {rot:best.rot}), e3 = parseReg(r3.text);
+    window.__ocrLast += "\n-----\n" + r3.text;
+    if (!res.vin && e3.vin) res.vin = e3.vin;
+    if (!res.plate && e3.plate) res.plate = e3.plate;
+    fromVin(res);
+  }
+  return res;
+}
+sample.json = async function(input, opts){
+  if (lsGet(GKEY)){
+    try { return parseJson(await askGemini(input, opts)); }
+    catch(e){ toast((GEM_MSG[e && e.code] || "تعذّرت قراءة Gemini لهذه الصورة.") + " استُخدمت القراءة على الجهاز بدلاً منه." + (e && e.message ? " [" + e.message + "]" : "")); }
+  }
+  else if (hasKey()) return ask(input, opts).then(parseJson);
+  var kind = kindOf(input), imgs = opts && opts.images ? [].slice.call(opts.images.length === undefined ? [opts.images] : opts.images) : [];
+  if (!kind || !imgs.length) throw {code:"upstream_error", message:"nothing to read"};
+  if (kind === "reg") return readReg(imgs[0]);
+  var langs = kind === "dash" ? ["eng"] : ["eng", "ara"];
+  var r = await ocr(imgs[0], langs), res = PARSE[kind](r.text);
+  window.__ocrLast = r.text;
+  /* محاولات إضافية عند فشل القراءة: عتبة محلية، ثم تدوير الصورة إن كانت بالطول */
+  var tries = [{thresh:true}];
+  if (r.portrait) tries.push({rot:90}, {rot:270});
+  for (var i = 0; i < tries.length && filled(res) < 1; i++){
+    var r2 = await ocr(imgs[0], langs, tries[i]);
+    window.__ocrLast += "\n-----\n" + r2.text;
+    res = merge(res, PARSE[kind](r2.text));
+  }
+  return res;
+};
+sample.limits = function(){
+  return Promise.resolve({maxPromptBytes:262144, images:{maxCount:5, maxInputBytes:20971520, mediaTypes:["image/jpeg","image/png","image/webp","image/gif"]}});
+};
+
+window.claude = {
+  use:function(name){
+    return Promise.resolve(name === "db" ? db : name === "assets" ? assets : name === "sample" ? sample : null);
+  }
+};
+
+/* ---------- بطاقة الإعدادات والنسخ الاحتياطي ---------- */
+function blobToB64(b){
+  return new Promise(function(resolve, reject){
+    var r = new FileReader();
+    r.onload = function(){ resolve(String(r.result)); }; r.onerror = reject; r.readAsDataURL(b);
+  });
+}
+function b64ToBlob(dataUrl){ return fetch(dataUrl).then(function(r){ return r.blob(); }); }
+function allBlobs(){
+  return idb().then(function(d){
+    return new Promise(function(resolve, reject){
+      var out = {}, t = d.transaction("b", "readonly"), rq = t.objectStore("b").openCursor();
+      rq.onsuccess = function(){ var c = rq.result; if (c){ out[c.key] = c.value; c.continue(); } };
+      t.oncomplete = function(){ resolve(out); }; t.onerror = reject;
+    });
+  });
+}
+var main = document.querySelector("main");
+if (main){
+  var card = document.createElement("section");
+  card.className = "card";
+  card.innerHTML =
+    '<details><summary>الإعدادات والنسخ الاحتياطي</summary><div class="grid">' +
+    '<p class="hint f wide">بدون مفتاح تُقرأ الصور بأداة مجانية على الجهاز نفسه، وهي تقرأ الاستمارة والفواتير وخصم البنك لكنها لا تقرأ أرقام الطبلون الرقمية. راجع الأرقام دائماً قبل الحفظ.</p>' +
+    '<div class="f wide"><label for="sa-gkey">مفتاح Gemini المجاني (لقراءة دقيقة لكل الصور ومنها الطبلون)</label>' +
+    '<input type="text" id="sa-gkey" autocomplete="off" dir="ltr" placeholder="AIza...">' +
+    '<div class="row" id="sa-gkey-lock" hidden><span class="hint" style="flex:1">✓ المفتاح محفوظ ومخفي</span>' +
+    '<button type="button" class="btn sm" id="sa-gkey-edit">تغيير</button><button type="button" class="btn sm danger" id="sa-gkey-del">حذف</button></div></div>' +
+    '<div class="f wide"><label for="sa-gmodel">موديل Gemini</label><input type="text" id="sa-gmodel" autocomplete="off" dir="ltr"></div>' +
+    '<p class="hint f wide">يُنشأ المفتاح مجاناً من aistudio.google.com ثم Get API key. عند وجوده تُرسل الصورة إلى Google للقراءة، وقد تستخدمها Google لتحسين منتجاتها في الباقة المجانية.</p>' +
+    '<div class="f wide"><label for="sa-key">مفتاح Claude API (بديل مدفوع، اختياري)</label>' +
+    '<input type="text" id="sa-key" autocomplete="off" dir="ltr" placeholder="sk-ant-...">' +
+    '<div class="row" id="sa-key-lock" hidden><span class="hint" style="flex:1">✓ المفتاح محفوظ ومخفي</span>' +
+    '<button type="button" class="btn sm" id="sa-key-edit">تغيير</button><button type="button" class="btn sm danger" id="sa-key-del">حذف</button></div></div>' +
+    '<div class="f wide"><label for="sa-model">الموديل</label><input type="text" id="sa-model" autocomplete="off" dir="ltr"></div>' +
+    '<p class="hint f wide">المفتاح يُحفظ على هذا الجهاز فقط ويُرسل مباشرة إلى Anthropic عند قراءة صورة. بدون مفتاح تُستخدم القراءة المجانية.</p>' +
+    '<div class="row f wide"><button type="button" class="btn" id="sa-save">حفظ الإعدادات</button><button type="button" class="btn" id="sa-gtest">اختبار مفتاح Gemini</button><button type="button" class="btn" id="sa-update">تحديث البرنامج</button><span class="hint" id="sa-msg" role="status"></span></div>' +
+    '<div class="f wide" id="sa-sync-box"><label for="sa-sync">المزامنة التلقائية بين أجهزتك</label>' +
+    '<input type="text" id="sa-sync" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr" placeholder="رمز المزامنة (8 خانات أو أكثر)">' +
+    '<p class="hint" style="margin:6px 0 0">اختر رمزاً خاصاً بك واكتبه نفسه في كل جهاز (التطبيق، المتصفح، الكمبيوتر) فتتوحد البيانات تلقائياً. من يعرف الرمز يرى بياناتك، فاجعله صعب التخمين.</p></div>' +
+    '<div class="row f wide"><button type="button" class="btn" id="sa-sync-on">تفعيل المزامنة</button><button type="button" class="btn" id="sa-sync-now" hidden>مزامنة الآن</button><button type="button" class="btn danger" id="sa-sync-off" hidden>إيقاف المزامنة</button></div>' +
+    '<p class="hint f wide" id="sa-sync-msg" role="status"></p>' +
+    '<p class="hint f wide">البيانات محفوظة على هذا الجهاز، ومع المزامنة تُحفظ نسخة منها على خادم الموقع. للتحديث استخدم زر «تحديث البرنامج» ولا تحذف أيقونة التطبيق، فحذفها يمسح البيانات. صدّر نسخة احتياطية دورياً. الاستيراد يدمج الملف مع بيانات هذا الجهاز ولا يحذف شيئاً ولا يكرر السجلات.</p>' +
+    '<div class="row f wide"><button type="button" class="btn" id="sa-export">تصدير نسخة احتياطية</button>' +
+    '<label class="btn" style="display:inline-flex;align-items:center;cursor:pointer">استيراد ودمج نسخة<input type="file" id="sa-import" accept="application/json,.json" hidden></label></div>' +
+    '<p class="hint f wide" id="sa-bmsg" role="status"></p>' +
+    '</div></details>';
+  main.appendChild(card);
+  var $ = function(id){ return document.getElementById(id); };
+  /* المفتاح المحفوظ لا يُعرض: يظهر «محفوظ» مع تغيير أو حذف فقط */
+  var KEYS = [["sa-gkey", GKEY], ["sa-key", APIKEY]];
+  function lockKeys(){
+    KEYS.forEach(function(k){
+      var has = !!lsGet(k[1]);
+      $(k[0]).value = ""; $(k[0]).hidden = has; $(k[0] + "-lock").hidden = !has;
+    });
+  }
+  function modeMsg(pre){
+    $("sa-msg").textContent = pre + (lsGet(GKEY) ? " القراءة الآن عبر Gemini." : lsGet(APIKEY) ? " القراءة الآن عبر Claude." : " القراءة الآن بالأداة المجانية على الجهاز.");
+  }
+  KEYS.forEach(function(k){
+    $(k[0] + "-edit").addEventListener("click", function(){
+      $(k[0] + "-lock").hidden = true; $(k[0]).hidden = false; $(k[0]).value = ""; $(k[0]).focus();
+      $("sa-msg").textContent = "الصق المفتاح الجديد ثم اضغط حفظ الإعدادات.";
+    });
+    $(k[0] + "-del").addEventListener("click", function(){
+      try { localStorage.removeItem(k[1]); localStorage.removeItem(GOK); } catch(e){}
+      lockKeys(); modeMsg("تم حذف المفتاح.");
+    });
+  });
+  try { $("sa-model").value = localStorage.getItem(MODELKEY) || DEF_MODEL; $("sa-gmodel").value = localStorage.getItem(GMODEL) || DEF_GMODEL; } catch(e){}
+  lockKeys();
+  $("sa-update").addEventListener("click", async function(){
+    var btn = $("sa-update"), msg = $("sa-msg");
+    btn.disabled = true; msg.textContent = "جارٍ البحث عن تحديث...";
+    var latest = await latestVersion();
+    if (!latest){ msg.textContent = "تعذّر الاتصال بالموقع. تحقق من الإنترنت ثم حاول."; btn.disabled = false; return; }
+    if (latest === VERSION){ msg.textContent = "أنت على آخر نسخة (" + VERSION + ")."; btn.disabled = false; return; }
+    msg.textContent = "جارٍ التحديث إلى النسخة " + latest + "... بياناتك محفوظة.";
+    applyUpdate();
+  });
+  $("sa-gtest").addEventListener("click", async function(){
+    var btn = $("sa-gtest"), msg = $("sa-msg");
+    if ($("sa-gkey").value.trim()){ msg.textContent = "اضغط «حفظ الإعدادات» أولاً ثم اختبر."; return; }
+    if (!lsGet(GKEY)){ msg.textContent = "لا يوجد مفتاح Gemini محفوظ."; return; }
+    btn.disabled = true; msg.textContent = "جارٍ اختبار المفتاح...";
+    try {
+      await askGemini('Reply with exactly this JSON: {"ok": true}', {});
+      msg.textContent = "✓ المفتاح يعمل. الموديل المستخدم: " + lsGet(GOK);
+    } catch(e){
+      msg.textContent = "✗ " + (GEM_MSG[e && e.code] || "لم ينجح الاختبار.") + (e && e.message ? " [" + e.message + "]" : "");
+    }
+    btn.disabled = false;
+  });
+  $("sa-save").addEventListener("click", function(){
+    try {
+      KEYS.forEach(function(k){ var v = $(k[0]).value.trim(); if (v) localStorage.setItem(k[1], v); });
+      var m = $("sa-model").value.trim() || DEF_MODEL, gm = $("sa-gmodel").value.trim() || DEF_GMODEL;
+      localStorage.setItem(MODELKEY, m); $("sa-model").value = m;
+      localStorage.setItem(GMODEL, gm); $("sa-gmodel").value = gm;
+      lockKeys(); modeMsg("تم الحفظ.");
+    } catch(e){ $("sa-msg").textContent = "تعذّر الحفظ على هذا الجهاز."; }
+  });
+  /* ---------- واجهة المزامنة ---------- */
+  var newCode = null;
+  function syncUi(){
+    var on = !!lsGet(SYNCKEY);
+    $("sa-sync-box").hidden = on; $("sa-sync-on").hidden = on; $("sa-sync-now").hidden = !on; $("sa-sync-off").hidden = !on;
+    if (on && !$("sa-sync-msg").textContent) $("sa-sync-msg").textContent = "المزامنة مفعّلة.";
+  }
+  syncStatus = function(t){ $("sa-sync-msg").textContent = t; };
+  $("sa-sync-on").addEventListener("click", async function(){
+    var code = $("sa-sync").value.trim(), btn = this;
+    if (code.length < 8) return syncStatus("اكتب رمزاً من 8 خانات أو أكثر.");
+    btn.disabled = true;
+    try {
+      var key = await sha256hex("fuel-sync-code|" + code), create = newCode === code;
+      var r = await syncCall(key, {docs:{}, dels:{}, create:create});
+      if (r.status === 404){ newCode = code; btn.textContent = "تأكيد إنشاء رمز جديد"; syncStatus("هذا الرمز غير مستخدم من قبل. إن كان أول جهاز اضغط «تأكيد إنشاء رمز جديد»، وإن كان لديك رمز سابق فتأكد من كتابته."); btn.disabled = false; return; }
+      if (!r.ok) throw 0;
+      var o = await r.json();
+      adoptRemote(o);
+      localStorage.setItem(SYNCKEY, key);
+      $("sa-sync").value = ""; newCode = null; btn.textContent = "تفعيل المزامنة";
+      syncStatus("تم تفعيل المزامنة."); syncUi(); syncNow();
+    } catch(e){ syncStatus("تعذّر الاتصال بخادم المزامنة. تأكد من الإنترنت وحاول مرة أخرى."); }
+    btn.disabled = false;
+  });
+  $("sa-sync").addEventListener("input", function(){ if (newCode){ newCode = null; $("sa-sync-on").textContent = "تفعيل المزامنة"; } });
+  $("sa-sync-now").addEventListener("click", function(){ syncNow(true); });
+  $("sa-sync-off").addEventListener("click", function(){
+    if (!this.dataset.sure){ this.dataset.sure = "1"; this.textContent = "تأكيد الإيقاف"; return; }
+    delete this.dataset.sure; this.textContent = "إيقاف المزامنة";
+    try { localStorage.removeItem(SYNCKEY); } catch(e){}
+    $("sa-sync-msg").textContent = "أُوقفت المزامنة على هذا الجهاز. البيانات باقية عليه.";
+    syncUi();
+  });
+  syncUi();
+  $("sa-export").addEventListener("click", async function(){
+    var msg = $("sa-bmsg");
+    try {
+      var blobs = await allBlobs(), enc = {};
+      for (var id in blobs) enc[id] = await blobToB64(blobs[id]);
+      var file = new Blob([JSON.stringify({app:"fuel-log", version:1, exported:new Date().toISOString(), docs:store, blobs:enc})], {type:"application/json"});
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(file); a.download = "fuel-backup-" + new Date().toISOString().slice(0,10) + ".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      msg.textContent = "تم تجهيز ملف النسخة الاحتياطية.";
+    } catch(e){ msg.textContent = "تعذّر تصدير النسخة الاحتياطية."; }
+  });
+  $("sa-import").addEventListener("change", async function(){
+    var msg = $("sa-bmsg"), f = this.files && this.files[0]; if (!f) return;
+    try {
+      var o = JSON.parse(await f.text());
+      if (!o || o.app !== "fuel-log" || typeof o.docs !== "object") throw 0;
+      var before = clone(store), rep = mergeDocs(o.docs); stampChanges(before); persist(); if (!lsGet(MSKEY)) msPull();
+      var ids = Object.keys(o.blobs || {});
+      for (var i = 0; i < ids.length; i++){
+        var b = await b64ToBlob(o.blobs[ids[i]]);
+        await tx("readwrite", (function(blob, id){ return function(s){ return s.put(blob, id); }; })(b, ids[i]));
+      }
+      msg.textContent = "تم الدمج: أُضيف " + rep.cars + " سيارة، " + rep.fills + " تعبئة، " + rep.services + " سجل صيانة، " + rep.odo + " قراءة عداد. تُجوهل " + rep.skipped + " سجل مكرر. جارٍ إعادة التحميل…";
+      setTimeout(function(){ location.reload(); }, 3500);
+    } catch(e){ msg.textContent = "ملف النسخة الاحتياطية غير صالح."; }
+    this.value = "";
+  });
+}
+
+/* ---------- المزامنة التلقائية: آخر تعديل يفوز لكل سجل، والحذف ينتقل بين الأجهزة ---------- */
+var SYNCPATH = /^(cars|fills|services|items|settings)\/[A-Za-z0-9_-]{1,64}$/, syncStatus = syncStatus || function(){}, syncing = false, syncAgain = false, syncTimer = null;
+function sha256hex(s){
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)).then(function(h){
+    return Array.from(new Uint8Array(h)).map(function(b){ return b.toString(16).padStart(2, "0"); }).join("");
+  });
+}
+function syncCall(key, body){
+  return fetch("sync.php?a=sync", {method:"POST", cache:"no-store", headers:{"Content-Type":"application/json", "X-Sync-Key":key}, body:JSON.stringify(body)});
+}
+function stampChanges(before){
+  var now = Date.now();
+  Object.keys(store).forEach(function(p){ if (before[p] === undefined || JSON.stringify(before[p]) !== JSON.stringify(store[p])){ meta.t[p] = now; delete meta.d[p]; } });
+}
+/* أول ربط للجهاز: بيانات الخادم هي الأساس، وتُدمج فيها بيانات الجهاز دون تكرار */
+function adoptRemote(o){
+  var rd = o.docs || {}, paths = Object.keys(rd);
+  if (!paths.length) return;
+  var local = store, base = {};
+  store = {}; meta = {t:{}, d:{}};
+  paths.forEach(function(p){ store[p] = rd[p].d; base[p] = clone(rd[p].d); meta.t[p] = Number(rd[p].t) || 1; });
+  Object.keys(o.dels || {}).forEach(function(p){ meta.d[p] = Number(o.dels[p]) || 1; });
+  mergeDocs(local); stampChanges(base); persist(); notify(); msPull();
+}
+function applyRemote(o){
+  var ch = false;
+  Object.keys(o.dels || {}).forEach(function(p){
+    var t = Number(o.dels[p]) || 0;
+    if (store[p] !== undefined && (meta.t[p] || 1) <= t){ delete store[p]; delete meta.t[p]; ch = true; }
+    if (store[p] === undefined) meta.d[p] = Math.max(meta.d[p] || 0, t);
+  });
+  Object.keys(o.docs || {}).forEach(function(p){
+    var rec = o.docs[p], t = Number(rec.t) || 0, mine = store[p] !== undefined ? (meta.t[p] || 1) : (meta.d[p] || 0);
+    if (t > mine){ store[p] = rec.d; meta.t[p] = t; delete meta.d[p]; ch = true; }
+  });
+  return ch;
+}
+async function syncBlobs(key, remote){
+  var need = {}; Object.keys(store).forEach(function(p){ if (p.indexOf("services/") === 0 && store[p] && store[p].invoice) need[store[p].invoice] = 1; });
+  var local = await allBlobs(), h = {"X-Sync-Key":key};
+  for (var id in need){
+    if (!/^[a-z0-9]{8,64}$/.test(id)) continue;
+    if (local[id] && remote.indexOf(id) < 0){
+      await fetch("sync.php?a=blobput&id=" + id, {method:"POST", cache:"no-store", headers:h, body:await blobToB64(local[id])});
+    } else if (!local[id] && remote.indexOf(id) >= 0){
+      var r = await fetch("sync.php?a=blobget&id=" + id, {method:"POST", cache:"no-store", headers:h});
+      if (r.ok){
+        var b = await b64ToBlob((await r.json()).data);
+        await tx("readwrite", (function(blob, k){ return function(s){ return s.put(blob, k); }; })(b, id));
+      }
+    }
+  }
+}
+async function syncNow(loud){
+  var key = null; try { key = localStorage.getItem(SYNCKEY); } catch(e){}
+  if (!key) return;
+  if (syncing){ syncAgain = true; return; }
+  syncing = true;
+  if (loud) syncStatus("جارٍ المزامنة…");
+  try {
+    var docs = {};
+    Object.keys(store).forEach(function(p){ if (SYNCPATH.test(p)) docs[p] = {t:meta.t[p] || 1, d:store[p]}; });
+    var r = await syncCall(key, {docs:docs, dels:meta.d});
+    if (r.status === 404){ try { localStorage.removeItem(SYNCKEY); } catch(e){} throw {gone:true}; }
+    if (!r.ok) throw 0;
+    var o = await r.json(), ch = applyRemote(o);
+    persist(); if (ch){ msPull(); notify(); }
+    await syncBlobs(key, o.blobs || []);
+    var tf = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {hour:"numeric", minute:"2-digit"});
+    syncStatus("المزامنة مفعّلة · آخر مزامنة " + tf.format(new Date()) + (ch ? " · وصلت بيانات جديدة" : ""));
+  } catch(e){
+    syncStatus(e && e.gone ? "رمز المزامنة لم يعد موجوداً على الخادم. فعّل المزامنة من جديد." : "المزامنة مؤجلة: لا يوجد اتصال الآن. ستُعاد المحاولة تلقائياً.");
+  }
+  syncing = false;
+  if (syncAgain){ syncAgain = false; syncNow(); }
+}
+onDirty = function(){ clearTimeout(syncTimer); syncTimer = setTimeout(function(){ syncNow(); }, 2500); };
+setTimeout(function(){ syncNow(); }, 1500);
+setInterval(function(){ if (!document.hidden) syncNow(); }, 60000);
+document.addEventListener("visibilitychange", function(){ if (!document.hidden) syncNow(); });
+window.addEventListener("online", function(){ syncNow(); });
+
+/* ---------- دمج نسخة احتياطية مع بيانات الجهاز: لا حذف ولا تكرار ---------- */
+function mergeDocs(docs){
+  var rep = {cars:0, fills:0, services:0, odo:0, skipped:0};
+  function col(src, name){ var pre = name + "/", out = []; Object.keys(src).forEach(function(p){ if (p.indexOf(pre) === 0 && p.slice(pre.length).indexOf("/") < 0 && src[p] && typeof src[p] === "object") out.push({id:p.slice(pre.length), d:src[p]}); }); return out; }
+  function norm(v){ return String(v == null ? "" : v).replace(/\s+/g, "").toLowerCase(); }
+  function put(name, id, d){ var path = name + "/" + id; if (store[path] !== undefined) path = name + "/" + newId(); store[path] = clone(d); return path.split("/").pop(); }
+  var map = {}, mine = col(store, "cars");
+  col(docs, "cars").forEach(function(c){
+    var hit = null;
+    mine.forEach(function(m){
+      if (hit) return;
+      if ((m.id === c.id && !(norm(c.d.plate) && norm(m.d.plate) && norm(c.d.plate) !== norm(m.d.plate))) || (norm(c.d.vin) && norm(c.d.vin) === norm(m.d.vin)) || (norm(c.d.plate) && norm(c.d.plate) === norm(m.d.plate))) hit = m;
+    });
+    if (!hit){ var nid = put("cars", c.id, c.d); map[c.id] = nid; mine.push({id:nid, d:store["cars/" + nid]}); rep.cars++; rep.odo += (c.d.odoLog || []).length; return; }
+    map[c.id] = hit.id;
+    var t = store["cars/" + hit.id];
+    ["make","model","year","color","vin","expiry","plate"].forEach(function(k){ if ((t[k] == null || t[k] === "") && c.d[k] != null && c.d[k] !== "") t[k] = c.d[k]; });
+    var log = Array.isArray(t.odoLog) ? t.odoLog.slice() : [];
+    (Array.isArray(c.d.odoLog) ? c.d.odoLog : []).forEach(function(p){
+      if (!p || !(Number(p.o) > 0) || !p.t) return;
+      if (log.some(function(q){ return Number(q.o) === Number(p.o) && String(q.t) === String(p.t); })) return;
+      log.push({o:Number(p.o), t:String(p.t)}); rep.odo++;
+    });
+    log.sort(function(a, b){ return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; });
+    if (log.length) t.odoLog = log.slice(-400);
+    if (Number(c.d.odoNow) > 0 && !(Number(t.odoNow) >= Number(c.d.odoNow))){ t.odoNow = Number(c.d.odoNow); t.odoAt = c.d.odoAt || null; }
+  });
+  function carOf(d){ return d.carId ? (map[d.carId] || d.carId) : null; }
+  var fl = col(store, "fills").map(function(x){ return x.d; });
+  col(docs, "fills").forEach(function(f){
+    var d = clone(f.d); d.carId = carOf(d);
+    if (fl.some(function(x){ return (x.carId || null) === d.carId && ((d.odo != null && x.odo === d.odo) || (x.ts === d.ts && x.amount === d.amount)); })){ rep.skipped++; return; }
+    put("fills", f.id, d); fl.push(d); rep.fills++;
+  });
+  var sv = col(store, "services");
+  col(docs, "services").forEach(function(s){
+    var d = clone(s.d); d.carId = carOf(d);
+    var hit = null; sv.forEach(function(x){ if (!hit && (x.d.carId || null) === d.carId && x.d.itemId === d.itemId && x.d.odo === d.odo) hit = x; });
+    if (hit){
+      var t = store["services/" + hit.id];
+      if (!t.invoice && d.invoice) t.invoice = d.invoice;
+      if (t.cost == null && d.cost != null) t.cost = d.cost;
+      rep.skipped++; return;
+    }
+    var nid = put("services", s.id, d); sv.push({id:nid, d:d}); rep.services++;
+  });
+  ["items", "settings"].forEach(function(name){
+    col(docs, name).forEach(function(x){ if (store[name + "/" + x.id] === undefined) store[name + "/" + x.id] = clone(x.d); });
+  });
+  return rep;
+}
+
+/* ---------- التحديث من داخل البرنامج: لا يمسّ البيانات (localStorage و IndexedDB) ---------- */
+async function latestVersion(){
+  try {
+    var t = await fetch("standalone.js?check=" + Date.now(), {cache:"no-store"}).then(function(r){ return r.ok ? r.text() : ""; });
+    var m = t.match(/var VERSION = "([^"]+)"/);
+    return m ? m[1] : "";
+  } catch(e){ return ""; }
+}
+async function applyUpdate(){
+  try {
+    if (window.caches){ var ks = await caches.keys(); await Promise.all(ks.map(function(k){ return caches.delete(k); })); }
+    if (navigator.serviceWorker){
+      var regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(function(r){ return r.update().catch(function(){}); }));
+    }
+  } catch(e){}
+  location.replace(location.pathname + "?u=" + Date.now());
+}
+function offerUpdate(latest){
+  if (document.getElementById("upd-bar")) return;
+  var bar = document.createElement("div"); bar.id = "upd-bar"; bar.setAttribute("role", "status");
+  bar.style.cssText = "position:fixed;inset-inline:12px;bottom:12px;z-index:50;display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:500;box-shadow:0 6px 20px rgba(0,0,0,.25)";
+  var sp = document.createElement("span"); sp.style.flex = "1"; sp.textContent = "نسخة جديدة متاحة (" + latest + "). بياناتك تبقى كما هي.";
+  var b = document.createElement("button"); b.type = "button"; b.className = "btn sm"; b.textContent = "تحديث الآن";
+  b.addEventListener("click", function(){ b.disabled = true; applyUpdate(); });
+  bar.appendChild(sp); bar.appendChild(b); document.body.appendChild(bar);
+}
+/* تحديث تلقائي: عند فتح البرنامج أو العودة إليه تُحمَّل النسخة الأحدث مباشرة دون إعادة تثبيت. البيانات لا تتأثر.
+   لا يُقاطَع إدخال جارٍ: إن كانت نافذة مفتوحة يُعرض شريط التحديث بدل ذلك */
+async function checkUpdate(){
+  var latest = await latestVersion();
+  if (!latest || latest === VERSION) return;
+  var tried = "", busy = document.querySelector("dialog[open]");
+  try { var fr = document.querySelector("#exp-view iframe"); if (!busy && fr && fr.contentDocument) busy = fr.contentDocument.querySelector("dialog[open]"); } catch(e){}
+  try { tried = sessionStorage.getItem("fuelapp-upd") || ""; } catch(e){}
+  if (tried !== latest && !busy){ try { sessionStorage.setItem("fuelapp-upd", latest); } catch(e){} applyUpdate(); return; }
+  offerUpdate(latest);
+}
+setTimeout(checkUpdate, 3000);
+document.addEventListener("visibilitychange", function(){ if (!document.hidden) checkUpdate(); });
+/* طلب تخزين دائم حتى لا يمسح النظام البيانات تلقائياً عند امتلاء الجهاز */
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); } catch(e){}
+
+/* ---------- مصروفات المنزل ضمن المزامنة والنسخة الاحتياطية: تُحفظ نسخة منها كمستند واحد settings/masroof ----------
+   صفحة مصروف البيت تحفظ بياناتها في هذا المتصفح، وهنا تُنسخ إلى مخزن البرنامج فترافق بيانات السيارة في المزامنة والتصدير، وتعود معها عند الاستعادة */
+var MSKEY = "masroof-v1", MSPATH = "settings/masroof";
+function msPush(){
+  var raw = lsGet(MSKEY); if (!raw) return;
+  if (store[MSPATH] && store[MSPATH].raw === raw) return;
+  write(function(){ store[MSPATH] = {raw:raw}; touch(MSPATH); });
+}
+function msPull(){
+  var d = store[MSPATH]; if (!d || typeof d.raw !== "string" || d.raw === lsGet(MSKEY)) return;
+  try { localStorage.setItem(MSKEY, d.raw); } catch(e){}
+}
+window.addEventListener("storage", function(ev){ if (ev.key === MSKEY) msPush(); });
+msPush();
+
+/* ---------- برنامج واحد باسم «دفتر المصروف»: صفحة رئيسية بخيارين، «مصروفات السيارة» (هذا البرنامج ببياناته كما هي) و«مصروفات المنزل» (صفحة مصروف البيت) ----------
+   لا يعمل عندما يكون هذا البرنامج نفسه معروضاً داخل صفحة أخرى، حتى لا يتداخل القسمان */
+(function(){
+  if (window.self !== window.top) return;
+  try { document.title = "دفتر المصروف"; } catch(e){}
+  try { var h1 = document.querySelector("h1"); if (h1 && h1.firstChild && h1.firstChild.nodeType === 3) h1.firstChild.nodeValue = "مصروفات السيارة"; } catch(e){}
+  var css = document.createElement("style");
+  css.textContent = "#app-tabs{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}" +
+    "#app-tabs button{border:0;background:transparent;min-height:56px;font:inherit;font-weight:600;font-size:.95rem;color:var(--muted);cursor:pointer}" +
+    "#app-tabs button[aria-current=page]{color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}" +
+    "#exp-view,#app-home{position:fixed;top:0;left:0;right:0;bottom:calc(56px + env(safe-area-inset-bottom));background:var(--bg);z-index:4}" +
+    "#exp-view iframe{width:100%;height:100%;border:0;display:block}" +
+    "#app-home{overflow:auto;padding:28px 16px}" +
+    "#app-home .in{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}" +
+    "#app-home h2{margin:0;font-size:1.9rem;line-height:1.3;color:var(--ink)}" +
+    "#app-home p{margin:0;color:var(--muted)}" +
+    "#app-home button{display:flex;flex-direction:column;gap:4px;text-align:start;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 18px;cursor:pointer;width:100%}" +
+    "#app-home button b{font-size:1.3rem;color:var(--accent)}" +
+    "#app-home button span{color:var(--muted);font-size:.95rem}" +
+    "#home-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}" +
+    "#home-stats .st{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:2px;min-width:0}" +
+    "#home-stats .st.wide{grid-column:1 / -1}" +
+    "#home-stats .st .k{color:var(--muted);font-size:.85rem}" +
+    "#home-stats .st .v{font-size:1.55rem;font-weight:700;color:var(--ink);line-height:1.3;font-variant-numeric:tabular-nums}" +
+    "#home-stats .st .v small{font-size:.8rem;font-weight:500;color:var(--muted)}" +
+    "#home-stats .st .v.neg{color:var(--warn)}" +
+    "#home-stats .st .u{color:var(--muted);font-size:.78rem}" +
+    "#home-month{font-weight:600}" +
+    "#home-day{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}" +
+    "#home-day .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}" +
+    "#home-day .k{color:var(--muted);font-size:.85rem}" +
+    "#home-day .lim{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}" +
+    "#home-day .track{height:14px;border-radius:999px;background:var(--line);overflow:hidden}" +
+    "#home-day .fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .3s}" +
+    "#home-day.over .fill{background:var(--warn)}" +
+    "#home-day .ends{display:flex;justify-content:space-between;gap:10px;font-size:.92rem;font-variant-numeric:tabular-nums}" +
+    "#home-day .ends b{color:var(--ink)}" +
+    "#home-day.over #hd-left b{color:var(--warn)}" +
+    "#home-day .u{color:var(--muted);font-size:.78rem}" +
+    "#app-home .adds{display:grid;grid-template-columns:1fr 1fr;gap:10px}" +
+    "#app-home .adds button{background:var(--accent);border-color:var(--accent);padding:16px 12px;align-items:center;text-align:center}" +
+    "#app-home .adds button b{color:var(--accent-ink);font-size:1.05rem}" +
+    "#app-home .adds button span{color:var(--accent-ink);opacity:.85;font-size:.8rem}" +
+    "#home-add-dlg{border:1px solid var(--line);border-radius:16px;padding:18px;background:var(--surface);color:var(--ink);width:min(92vw,420px)}" +
+    "#home-add-dlg::backdrop{background:rgba(0,0,0,.45)}" +
+    "#home-add-dlg h2{margin:0 0 4px;font-size:1.2rem}" +
+    "#home-add-dlg p{margin:0 0 12px;color:var(--muted);font-size:.9rem}" +
+    "#home-add-dlg .opts{display:grid;gap:10px}" +
+    "#home-add-dlg button{font:inherit;text-align:start;display:flex;flex-direction:column;gap:2px;width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}" +
+    "#home-add-dlg button b{color:var(--accent)}" +
+    "#home-add-dlg button span{color:var(--muted);font-size:.85rem}" +
+    "#home-add-dlg button.x{align-items:center;font-weight:600}" +
+    "#app-home .secs{display:grid;grid-template-columns:1fr 1fr;gap:10px}" +
+    "#app-home .secs button{padding:14px}" +
+    "#app-home .secs button b{font-size:1.05rem}" +
+    "#app-home .secs button span{font-size:.82rem}" +
+    "#home-sync{border-radius:14px;padding:14px 16px;font-size:.92rem;line-height:1.6;border:1px solid var(--line);color:var(--ink);background:var(--surface)}" +
+    "#home-sync.warn{background:var(--warn-soft);border-color:var(--warn)}" +
+    "#app-home #home-sync button{display:inline-block;width:auto;margin-top:8px;padding:8px 14px;border-radius:10px;font-weight:600;font-size:.92rem;color:var(--accent)}" +
+    "body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}";
+  document.head.appendChild(css);
+  var home = document.createElement("div"), view = document.createElement("div"), frame = document.createElement("iframe"), nav = document.createElement("nav");
+  home.id = "app-home";
+  home.innerHTML = '<div class="in"><h2>دفتر المصروف</h2><div class="adds">' +
+    '<button type="button" id="home-add-car"><b>إضافة مصروف السيارة</b><span>العداد ثم نوع المصروف</span></button>' +
+    '<button type="button" id="home-add-exp"><b>إضافة مصروف المنزل</b><span>اختر نوع المصروف</span></button></div>' +
+    '<div id="home-day"><div class="top"><span class="k">الحد اليومي (المنزل + السيارة)</span><span class="lim" id="hd-lim">—</span></div>' +
+    '<div class="track" id="hd-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="المصروف من الحد اليومي"><div class="fill" id="hd-fill"></div></div>' +
+    '<div class="ends"><span id="hd-spent">المصروف اليوم <b>—</b></span><span id="hd-left">الباقي <b>—</b></span></div><span class="u" id="hd-u"></span></div>' +
+    '<p id="home-month"></p>' +
+    '<div id="home-stats">' +
+    '<div class="st"><span class="k">مصروف الشهر</span><span class="v" id="hs-spent">—</span><span class="u" id="hs-spent-u">ريال</span></div>' +
+    '<div class="st"><span class="k">الباقي</span><span class="v" id="hs-left">—</span><span class="u" id="hs-left-u">ريال</span></div>' +
+    '<div class="st"><span class="k">بنزين الشهر</span><span class="v" id="hs-fuel">—</span><span class="u" id="hs-fuel-u">ريال</span></div>' +
+    '<div class="st"><span class="k">الممشى خلال الشهر</span><span class="v" id="hs-km">—</span><span class="u" id="hs-km-u">كم</span></div>' +
+    '<div class="st wide"><span class="k">الممشى منذ آخر تعبئة بنزين</span><span class="v" id="hs-since">—</span><span class="u" id="hs-since-u">كم</span></div>' +
+    '</div><div class="secs">' +
+    '<button type="button" id="home-car"><b>مصروفات السيارة</b><span>البنزين والصيانة والعداد</span></button>' +
+    '<button type="button" id="home-exp"><b>مصروفات المنزل</b><span>البنود وحدودها الشهرية</span></button></div><div id="home-sync" role="status"></div></div>';
+  view.id = "exp-view"; view.hidden = true; frame.title = "مصروفات المنزل"; view.appendChild(frame);
+  nav.id = "app-tabs"; nav.setAttribute("aria-label", "أقسام البرنامج");
+  nav.innerHTML = '<button type="button" id="tab-home">الرئيسية</button><button type="button" id="tab-car">السيارة</button><button type="button" id="tab-exp">المنزل</button>';
+  document.body.appendChild(home); document.body.appendChild(view); document.body.appendChild(nav);
+  function show(v){
+    if (v === "exp" && !frame.getAttribute("src")) frame.setAttribute("src", "../masroof/");
+    home.hidden = v !== "home"; view.hidden = v !== "exp";
+    if (v === "home"){ syncCard(); stats(); }
+    ["home", "car", "exp"].forEach(function(k){ document.getElementById("tab-" + k).setAttribute("aria-current", k === v ? "page" : "false"); });
+    if (v === "car") window.scrollTo(0, 0);
+  }
+  ["home", "car", "exp"].forEach(function(k){ document.getElementById("tab-" + k).addEventListener("click", function(){ show(k); }); });
+  document.getElementById("home-car").addEventListener("click", function(){ show("car"); });
+  document.getElementById("home-exp").addEventListener("click", function(){ show("exp"); });
+  /* حالة النسخ التلقائي على الخادم: تنبيه واضح ما دامت البيانات على هذا الجهاز فقط */
+  function syncCard(){
+    var box = document.getElementById("home-sync"), on = !!lsGet(SYNCKEY);
+    box.className = on ? "" : "warn";
+    box.innerHTML = on ? "النسخ التلقائي مفعّل: بيانات السيارة والمنزل تُحفظ أيضاً على خادم الموقع، وتعود برمزك إن حُذف التطبيق."
+      : 'بياناتك محفوظة على هذا الجهاز فقط، وتضيع إن حُذف التطبيق. فعّل النسخ التلقائي برمز خاص بك لتُحفظ على خادم الموقع.<br><button type="button" id="home-sync-go">تفعيل النسخ التلقائي</button>';
+    var go = document.getElementById("home-sync-go");
+    if (go) go.addEventListener("click", function(){
+      show("car");
+      try { var f = document.getElementById("sa-sync"); f.closest("details").open = true; f.scrollIntoView({block:"center"}); f.focus(); } catch(e){}
+    });
+  }
+  /* إحصاءات الصفحة الرئيسية: مصروف الشهر والباقي (من قسم المنزل)، وبنزين الشهر والممشى (من قسم السيارة) */
+  var MSSUM = "masroof-summary";
+  function el(id){ return document.getElementById(id); }
+  function n0(x){ return Number(x).toLocaleString("en-US", {maximumFractionDigits:0}); }
+  function stats(){
+    try {
+      var now = new Date(), ym = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+      try { el("home-month").textContent = "إحصاءات " + new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {month:"long", year:"numeric"}).format(now); } catch(e){}
+      var s = null; try { s = JSON.parse(lsGet(MSSUM) || "null"); } catch(e){}
+      var tdy = ym + "-" + String(now.getDate()).padStart(2, "0"), box = el("home-day");
+      if (s && s.d === tdy && s.dayLimit != null){
+        var L = Number(s.dayLimit), sp = Number(s.daySpent) || 0, lf = L - sp, pc = L > 0 ? Math.min(100, sp / L * 100) : (sp > 0 ? 100 : 0);
+        el("hd-lim").textContent = n0(L) + " ريال";
+        el("hd-fill").style.width = pc + "%"; el("hd-track").setAttribute("aria-valuenow", String(Math.round(pc)));
+        box.className = lf < -0.005 ? "over" : "";
+        el("hd-spent").innerHTML = "المصروف اليوم <b>" + n0(sp) + "</b>";
+        el("hd-left").innerHTML = lf < -0.005 ? "تجاوز <b>" + n0(-lf) + "</b>" : "الباقي <b>" + n0(lf) + "</b>";
+        el("hd-u").textContent = "الباقي من ميزانية الشهر مقسوماً على " + s.daysLeft + (s.daysLeft > 10 ? " يوماً" : s.daysLeft > 2 ? " أيام" : s.daysLeft === 2 ? " يومين" : " يوم") + " باقية";
+      } else {
+        el("hd-lim").textContent = "—"; el("hd-fill").style.width = "0"; box.className = "";
+        el("hd-spent").innerHTML = "المصروف اليوم <b>—</b>"; el("hd-left").innerHTML = "الباقي <b>—</b>"; el("hd-u").textContent = "يظهر بعد تحميل قسم المنزل";
+      }
+      if (s && s.m === ym){
+        el("hs-spent").textContent = n0(s.spent); el("hs-spent-u").textContent = "ريال من " + n0(s.income) + (s.from ? " · منذ " + Number(s.from.slice(8)) + "/" + Number(s.from.slice(5,7)) : "");
+        el("hs-left").textContent = n0(s.left); el("hs-left").className = "v" + (s.left < -0.005 ? " neg" : "");
+        el("hs-left-u").textContent = s.left < -0.005 ? "ريال · تجاوز للميزانية" : "ريال من ميزانية الشهر";
+      } else { el("hs-spent").textContent = "—"; el("hs-left").textContent = "—"; el("hs-left").className = "v"; el("hs-spent-u").textContent = "ريال"; el("hs-left-u").textContent = "يظهر بعد فتح قسم المنزل"; }
+      /* بيانات السيارة تُقرأ من المخزن مباشرة: التعبئات والصيانة وقراءات العداد للسيارة الحالية */
+      var fills = [], svcs = [], carIds = [];
+      Object.keys(store).forEach(function(k){
+        var v = store[k]; if (!v || typeof v !== "object") return;
+        if (k.indexOf("fills/") === 0) fills.push(v); else if (k.indexOf("services/") === 0) svcs.push(v); else if (k.indexOf("cars/") === 0) carIds.push(k.slice(5));
+      });
+      var fm = 0, fc = 0; fills.forEach(function(f){ if (String(f.ts).slice(0,7) === ym){ fm += Number(f.amount) || 0; fc++; } });
+      el("hs-fuel").textContent = n0(fm); el("hs-fuel-u").textContent = "ريال · " + (fc ? fc + (fc === 1 ? " تعبئة" : " تعبئات") : "لا تعبئات بعد");
+      var cur = lsGet("fuel-cur-car"); if (carIds.indexOf(cur) < 0) cur = carIds.sort()[0] || null;
+      var car = cur ? store["cars/" + cur] : null, tag = car && carIds.length > 1 ? " · " + ([car.make, car.model].filter(Boolean).join(" ") || "سيارة") : "";
+      var mine = function(x){ return x.carId === cur && x.odo != null && isFinite(Number(x.odo)); }, raw = [];
+      fills.filter(mine).forEach(function(f){ raw.push({d:String(f.ts).slice(0,10), o:Number(f.odo)}); });
+      svcs.filter(mine).forEach(function(x){ raw.push({d:String(x.ts).slice(0,10), o:Number(x.odo)}); });
+      if (car){
+        (car.odoLog || []).forEach(function(q){ raw.push({d:String(q.t).slice(0,10), o:Number(q.o)}); });
+        if (car.odoNow != null && car.odoAt) raw.push({d:String(car.odoAt).slice(0,10), o:Number(car.odoNow)});
+      }
+      var byDay = {}; raw.forEach(function(q){ if (/^\d{4}-\d\d-\d\d$/.test(q.d) && (byDay[q.d] == null || q.o > byDay[q.d])) byDay[q.d] = q.o; });
+      var pts = []; Object.keys(byDay).sort().forEach(function(d){ if (!pts.length || byDay[d] >= pts[pts.length - 1].o) pts.push({d:d, o:byDay[d], t:new Date(d + "T12:00").getTime()}); });
+      function odoAt(t){
+        if (t <= pts[0].t) return pts[0].o;
+        for (var i = 1; i < pts.length; i++){ if (t <= pts[i].t){ var A = pts[i - 1], B = pts[i]; return A.o + (B.o - A.o) * (t - A.t) / (B.t - A.t); } }
+        return pts[pts.length - 1].o;
+      }
+      var m0 = new Date(now.getFullYear(), now.getMonth(), 1, 12).getTime(), km = null, est = false, fromDay = null;
+      if (pts.length){
+        var last = pts[pts.length - 1];
+        if (last.t < m0) km = 0;
+        else if (pts[0].t >= m0){ km = last.o - pts[0].o; fromDay = pts[0].d; }
+        else { km = last.o - odoAt(m0); est = !pts.some(function(q){ return q.t === m0; }); }
+      }
+      el("hs-km").textContent = km != null ? n0(Math.max(0, km)) : "—";
+      el("hs-km-u").textContent = (km == null ? "كم · يظهر بعد تسجيل العداد" : est ? "كم · تقديري من قراءات العداد" : fromDay ? "كم · منذ " + Number(fromDay.slice(8)) + "/" + Number(fromDay.slice(5,7)) : "كم") + tag;
+      var lastF = null; fills.filter(mine).forEach(function(f){ if (!lastF || String(f.ts) > String(lastF.ts)) lastF = f; });
+      var top = pts.length ? pts[pts.length - 1].o : null; raw.forEach(function(q){ if (top == null || q.o > top) top = q.o; });
+      var since = lastF && top != null ? Math.max(0, top - Number(lastF.odo)) : null;
+      el("hs-since").textContent = since != null ? n0(since) : "—";
+      el("hs-since-u").textContent = (lastF ? "كم · العداد الآن " + n0(top) + "، وعند آخر تعبئة " + n0(lastF.odo) : "كم · يظهر بعد أول تعبئة") + tag;
+    } catch(e){}
+  }
+  window.addEventListener("storage", function(ev){ if (ev.key === MSSUM) stats(); });
+  /* إضافة مصروف من الصفحة الرئيسية.
+     السيارة: تُسجَّل قراءة العداد أولاً (بالكاميرا أو صورة من الاستوديو أو يدوياً) ثم يُختار نوع المصروف: تعبئة بنزين أو صيانة.
+     المنزل: تُفتح نافذة تسجيل المصروف في قسم المنزل وفيها اختيار البند. */
+  var addDlg = document.createElement("dialog"); addDlg.id = "home-add-dlg"; addDlg.setAttribute("aria-labelledby", "home-add-h");
+  addDlg.innerHTML = '<h2 id="home-add-h">إضافة مصروف السيارة</h2><p>سجّل قراءة العداد أولاً، ثم اختر نوع المصروف (تعبئة بنزين أو صيانة).</p><div class="opts">' +
+    '<button type="button" id="ha-cam"><b>تصوير العداد بالكاميرا</b><span>تُقرأ القراءة من الصورة</span></button>' +
+    '<button type="button" id="ha-gal"><b>صورة من الاستوديو</b><span>اختر صورة العداد من صور الجهاز</span></button>' +
+    '<button type="button" id="ha-man"><b>إدخال العداد يدوياً</b><span>اكتب القراءة بالكيلومتر</span></button>' +
+    '<button type="button" class="x" id="ha-x">إلغاء</button></div>' +
+    '<input type="file" id="ha-cam-f" accept="image/*" capture="environment" hidden><input type="file" id="ha-gal-f" accept="image/*" hidden>';
+  document.body.appendChild(addDlg);
+  function hasCar(){ return Object.keys(store).some(function(k){ return k.indexOf("cars/") === 0; }); }
+  function toCar(){ try { addDlg.close(); } catch(e){} show("car"); }
+  el("home-add-car").addEventListener("click", function(){
+    if (!hasCar()){ show("car"); try { el("fill-open").click(); } catch(e){} return; }
+    try { addDlg.showModal(); } catch(e){ addDlg.setAttribute("open", ""); }
+  });
+  el("ha-x").addEventListener("click", function(){ addDlg.close(); });
+  el("ha-cam").addEventListener("click", function(){ el("ha-cam-f").click(); });
+  el("ha-gal").addEventListener("click", function(){ el("ha-gal-f").click(); });
+  ["ha-cam-f", "ha-gal-f"].forEach(function(id){
+    el(id).addEventListener("change", function(){
+      var f = this.files && this.files[0]; this.value = ""; if (!f) return;
+      toCar();
+      try { var dt = new DataTransfer(); dt.items.add(f); var t = el("snap-file"); t.files = dt.files; t.dispatchEvent(new Event("change", {bubbles:true})); }
+      catch(e){ el("snap-dlg").dispatchEvent(new Event("snap-manual")); }
+    });
+  });
+  el("ha-man").addEventListener("click", function(){ toCar(); el("snap-dlg").dispatchEvent(new Event("snap-manual")); });
+  el("home-add-exp").addEventListener("click", function(){
+    show("exp");
+    var tries = 0;
+    (function openAdd(){
+      var b = null; try { b = frame.contentWindow.document.getElementById("add-open"); } catch(e){}
+      if (b && frame.contentWindow.document.readyState === "complete"){ b.click(); return; }
+      if (++tries < 40) setTimeout(openAdd, 150);
+    })();
+  });
+  /* تُحدَّث الأرقام عند كل عودة إلى الصفحة الرئيسية، وقسم المنزل يُحمَّل في الخلفية ليحسب مصروف الشهر والباقي */
+  document.addEventListener("DOMContentLoaded", function(){
+    stats();
+    setTimeout(function(){ if (!frame.getAttribute("src")) frame.setAttribute("src", "../masroof/"); }, 600);
+  });
+  show("home");
+})();
+
+if ("serviceWorker" in navigator && location.protocol === "https:"){
+  navigator.serviceWorker.register("sw.js").catch(function(){});
+}
+})();
