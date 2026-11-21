@@ -99,6 +99,7 @@ dialog::backdrop{background:rgba(8,14,13,.55)}
 .f label{font-size:.88rem;color:var(--muted)}
 input[type=text],input[type=date],select{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 12px;min-height:46px;width:100%}
 .row{display:flex;gap:8px;flex-wrap:wrap}
+.qd{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .row .btn{flex:1}
 .msg{margin:0;padding:10px 12px;border-radius:10px;font-size:.92rem}
 .neg{color:var(--over);direction:ltr;unicode-bidi:isolate} .cat .r3{display:block;margin-top:4px;font-size:.8rem;color:var(--over);text-align:start}
@@ -159,6 +160,11 @@ body.has-tabs main{padding-bottom:96px}
     <p class="legend" id="legend" hidden><i></i> الخط الرأسي: أين وصل الشهر. إن تجاوزه الشريط فالصرف أسرع من الأيام.</p>
   </section>
 
+  <section class="card" id="stock-card" aria-labelledby="stock-h" hidden>
+    <h2 id="stock-h">مدة كفاية المشتريات</h2>
+    <ul class="log" id="stock"></ul>
+  </section>
+
   <section class="card" aria-labelledby="log-h">
     <h2 id="log-h">مصروفات الشهر</h2>
     <ul class="log" id="log"></ul>
@@ -191,6 +197,13 @@ body.has-tabs main{padding-bottom:96px}
     <h2 id="add-h">تسجيل مصروف</h2>
     <div class="f"><label for="a-cat">البند</label><select id="a-cat"></select></div>
     <p class="msg info" id="a-room" hidden></p>
+    <div class="f" id="a-item-box" hidden><label for="a-item">الصنف</label><select id="a-item"></select></div>
+    <div id="a-qty-box" hidden>
+      <div class="qd"><div class="f"><label for="a-qty">الكمية (<span id="a-unit"></span>)</label><input type="text" inputmode="decimal" id="a-qty" autocomplete="off"></div>
+      <div class="f"><label for="a-days">تكفي (أيام)</label><input type="text" inputmode="numeric" id="a-days" autocomplete="off"></div></div>
+      <div class="row" id="a-packs" style="margin-top:8px"></div>
+      <p class="hint" id="a-item-hint" hidden style="margin:8px 0 0;color:var(--muted);font-size:.9rem"></p>
+    </div>
     <div class="f"><label for="a-amt">المبلغ (ريال)</label><input type="text" inputmode="decimal" id="a-amt" autocomplete="off" placeholder="0"></div>
     <div class="f"><label for="a-date">التاريخ</label><input type="date" id="a-date"></div>
     <div class="f"><label for="a-note">ملاحظة (اختياري)</label><input type="text" id="a-note" maxlength="80" autocomplete="off"></div>
@@ -251,7 +264,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 12;
+  var VERSION = 13;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -262,6 +275,53 @@ body.has-tabs main{padding-bottom:96px}
     {id:"save", name:"ادخار وطوارئ", limit:300}, {id:"misc", name:"متفرقات", limit:290}],
     /* باقي نوفمبر 2026: المتوفر 1,000 ريال موزّعة على البنود بنسبة حدودها، لهذا الشهر فقط */
     months:{"2026-11":{income:1000, from:"2026-11-20", limits:{rent:189, fuel:110, carfund:56, food:350, util:54, telecom:36, kids:54, health:45, save:54, misc:52}}}};
+  /* أصناف الطعام ومستلزمات البيت الثابتة: الوحدة، معدل الاستهلاك اليومي التقريبي لأسرة من ستة، والعبوات الشائعة.
+     المدة = الكمية ÷ المعدل، وتُعدَّل يدوياً فيُحفظ معدل الأسرة الفعلي للصنف. */
+  var CATALOG = [
+    {id:"rice", n:"أرز", u:"كجم", r:0.5, p:[5,10], g:"الطعام"},
+    {id:"chicken", n:"دجاج", u:"حبة", r:1, p:[1,2,10], g:"الطعام"},
+    {id:"meat", n:"لحم", u:"كجم", r:0.5, p:[1,2], g:"الطعام"},
+    {id:"fish", n:"سمك", u:"كجم", r:1, p:[1,2], g:"الطعام"},
+    {id:"eggs", n:"بيض", u:"طبق", r:0.2, p:[1,2], g:"الطعام"},
+    {id:"milk", n:"حليب", u:"لتر", r:1, p:[1,2,12], g:"الطعام"},
+    {id:"laban", n:"لبن وزبادي", u:"لتر", r:0.5, p:[1,2], g:"الطعام"},
+    {id:"cheese", n:"جبن", u:"عبوة", r:1/7, p:[1,2], g:"الطعام"},
+    {id:"butter", n:"زبدة وسمن", u:"عبوة", r:0.1, p:[1,2], g:"الطعام"},
+    {id:"bread", n:"خبز", u:"كيس", r:2, p:[2,4], g:"الطعام"},
+    {id:"flour", n:"دقيق", u:"كجم", r:0.2, p:[1,2,10], g:"الطعام"},
+    {id:"pasta", n:"معكرونة", u:"كيس", r:1/3, p:[1,3,6], g:"الطعام"},
+    {id:"pulses", n:"عدس وبقوليات", u:"كجم", r:0.1, p:[1,2], g:"الطعام"},
+    {id:"oil", n:"زيت طبخ", u:"لتر", r:0.1, p:[1.5,3,5], g:"الطعام"},
+    {id:"sugar", n:"سكر", u:"كجم", r:0.1, p:[2,5,10], g:"الطعام"},
+    {id:"salt", n:"ملح", u:"عبوة", r:1/15, p:[1,2], g:"الطعام"},
+    {id:"spices", n:"بهارات", u:"عبوة", r:1/30, p:[1,2], g:"الطعام"},
+    {id:"tomato-paste", n:"صلصة ومعجون طماطم", u:"عبوة", r:1/7, p:[1,4], g:"الطعام"},
+    {id:"tea", n:"شاي", u:"علبة", r:0.05, p:[1,2], g:"الطعام"},
+    {id:"coffee", n:"قهوة", u:"عبوة", r:1/15, p:[1,2], g:"الطعام"},
+    {id:"veg", n:"خضار", u:"كجم", r:1, p:[1,3,5], g:"الطعام"},
+    {id:"potato", n:"بطاطس", u:"كجم", r:0.5, p:[1,3,5], g:"الطعام"},
+    {id:"onion", n:"بصل", u:"كجم", r:0.25, p:[1,3,5], g:"الطعام"},
+    {id:"fruit", n:"فواكه", u:"كجم", r:1, p:[1,3,5], g:"الطعام"},
+    {id:"water", n:"ماء شرب", u:"كرتون", r:0.25, p:[1,2,4], g:"الطعام"},
+    {id:"juice", n:"عصير", u:"لتر", r:0.5, p:[1,2,6], g:"الطعام"},
+    {id:"detergent", n:"صابون غسيل", u:"كجم", r:0.1, p:[3,5,7], g:"مستلزمات البيت"},
+    {id:"dish", n:"سائل جلي", u:"عبوة", r:0.05, p:[1,2], g:"مستلزمات البيت"},
+    {id:"floor", n:"منظف ومعقم", u:"عبوة", r:0.05, p:[1,2], g:"مستلزمات البيت"},
+    {id:"tissue", n:"مناديل", u:"ربطة", r:0.1, p:[1,2], g:"مستلزمات البيت"},
+    {id:"toilet-paper", n:"مناديل حمام", u:"ربطة", r:1/15, p:[1,2], g:"مستلزمات البيت"},
+    {id:"bags", n:"أكياس نفايات", u:"ربطة", r:1/30, p:[1,2], g:"مستلزمات البيت"},
+    {id:"hand-soap", n:"صابون أيدي", u:"عبوة", r:1/15, p:[1,2], g:"مستلزمات البيت"},
+    {id:"shampoo", n:"شامبو", u:"عبوة", r:1/30, p:[1,2], g:"مستلزمات البيت"},
+    {id:"toothpaste", n:"معجون أسنان", u:"عبوة", r:0.05, p:[1,2], g:"مستلزمات البيت"},
+    {id:"gas", n:"غاز الطبخ", u:"أسطوانة", r:1/30, p:[1], g:"مستلزمات البيت"}
+  ];
+  var ITEM_CAT = "food";
+  function itemOf(id){ return CATALOG.find(function(x){ return x.id === id; }) || null; }
+  function rateOf(it){ var r = cfg && cfg.rates && Number(cfg.rates[it.id]); return r > 0 ? r : it.r; }
+  function addDays(d, n){ var t = dateOf(d); t.setDate(t.getDate() + n); return t.getFullYear() + "-" + pad(t.getMonth() + 1) + "-" + pad(t.getDate()); }
+  function dayDiff(a, b){ return Math.round((dateOf(b) - dateOf(a)) / 86400000); }
+  function daysWord(n){ return n + (n > 10 ? " يوماً" : n > 2 ? " أيام" : n === 2 ? " يومين" : " يوم"); }
+  function qtyFmt(q){ return Number(q).toLocaleString("en-US", {maximumFractionDigits:2}); }
   var db = null, cfg = null, expenses = [], month = today().slice(0,7), cfgDraft = [], forceOver = false;
 
   function today(){ var d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
@@ -297,6 +357,10 @@ body.has-tabs main{padding-bottom:96px}
         if (/^\d{4}-\d{2}-\d{2}$/.test(String(o.from || ""))) out.months[k].from = String(o.from);
       });
     }
+    if (v.rates && typeof v.rates === "object"){
+      var rt = {}; Object.keys(v.rates).forEach(function(k){ var r = Number(v.rates[k]); if (r > 0 && itemOf(k)) rt[k] = Math.round(r * 10000) / 10000; });
+      if (Object.keys(rt).length) out.rates = rt;
+    }
     /* تسويات التجاوز: نقل من بند إلى بند، أو مبلغ خارجي غير الراتب */
     if (Array.isArray(v.adjs)){
       out.adjs = v.adjs.filter(function(a){ return a && a.id && /^\d{4}-\d{2}$/.test(String(a.m)) && (a.t === "move" || a.t === "extra") && a.to && Number(a.amount) > 0; })
@@ -315,7 +379,7 @@ body.has-tabs main{padding-bottom:96px}
     db.doc("config/budget").onSnapshot(function(s){ live(s); cfg = s.exists ? cleanCfg(s.data()) : null; render(); }, dead);
     db.collection("expenses").onSnapshot(function(q){
       live(q);
-      expenses = q.docs.map(function(d){ var v = d.data() || {}; return {id:d.id, cat:String(v.cat || ""), amount:Number(v.amount) || 0, date:String(v.date || ""), note:String(v.note || ""), at:String(v.at || "")}; });
+      expenses = q.docs.map(function(d){ var v = d.data() || {}; return {id:d.id, cat:String(v.cat || ""), amount:Number(v.amount) || 0, date:String(v.date || ""), note:String(v.note || ""), at:String(v.at || ""), item:v.item ? String(v.item) : undefined, qty:Number(v.qty) || undefined, unit:v.unit ? String(v.unit) : undefined, days:Number(v.days) || undefined}; });
       render();
     }, dead);
   }
@@ -511,7 +575,7 @@ body.has-tabs main{padding-bottom:96px}
       return '<div class="srow"><span><b>' + esc(o.c.name) + '</b> · عجز <b class="neg">' + fmt(-o.d) + '</b></span><button type="button" class="btn sm" data-settle="' + esc(o.c.id) + '">تسوية</button></div>'; }).join("") : "";
     var al = adjs(month), nameOf = function(id){ var c = cats.find(function(x){ return x.id === id; }); return c ? c.name : "بند محذوف"; };
     $("adj-card").hidden = !al.length;
-    summary();
+    summary(); stock();
     $("adj-log").innerHTML = al.map(function(a){
       return '<li><span class="what"><b>' + (a.t === "move" ? "نقل من «" + esc(nameOf(a.from)) + "» إلى «" + esc(nameOf(a.to)) + "»" : "مبلغ خارجي إلى «" + esc(nameOf(a.to)) + "»") + '</b><span>' + (a.note ? esc(a.note) : (a.t === "move" ? "خصم من بند آخر" : "غير الراتب")) + '</span></span><span class="amt">' + fmt(a.amount) + '</span><button type="button" class="btn sm danger" data-adj="' + esc(a.id) + '">حذف</button></li>';
     }).join("");
@@ -520,7 +584,7 @@ body.has-tabs main{padding-bottom:96px}
     $("log-empty").hidden = rows.length > 0;
     $("log").innerHTML = rows.map(function(e){
       var c = cats.find(function(x){ return x.id === e.cat; });
-      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
+      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") + (e.days > 1 ? " · تكفي " + daysWord(e.days) : "") : "") + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
         '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button>') + '</li>';
     }).join("");
   }
@@ -532,11 +596,29 @@ body.has-tabs main{padding-bottom:96px}
       var sp = expenses.concat(fuelRows).reduce(function(a, e){ return a + (e.date.slice(0,7) === m && (!E.from || e.date >= E.from) ? e.amount : 0); }, 0);
       /* الحد اليومي الشامل (المنزل + السيارة): ما بقي من ميزانية الشهر حتى بداية اليوم مقسوماً على الأيام الباقية ومنها اليوم */
       var td = today(), last = new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate(), daysLeft = Math.max(1, last - Number(td.slice(8)) + 1), before = 0, dsp = 0;
-      expenses.concat(fuelRows).forEach(function(e){ if (e.date.slice(0,7) !== m || (E.from && e.date < E.from)) return; if (e.date < td) before += e.amount; else if (e.date === td) dsp += e.amount; });
+      /* مشتريات الكمية (أرز يكفي 20 يوماً مثلاً) تُوزَّع على أيام كفايتها حتى نهاية الشهر، فلا تُحسب كلها على يوم الشراء */
+      var endM = m + "-" + pad(last);
+      expenses.concat(fuelRows).forEach(function(e){
+        if (e.date.slice(0,7) !== m || (E.from && e.date < E.from) || e.date > td) return;
+        var span = e.days > 1 ? Math.max(1, Math.min(Math.round(e.days), dayDiff(e.date, endM) + 1)) : 1, share = e.amount / span, gone = Math.min(span, dayDiff(e.date, td));
+        before += share * gone; if (gone < span) dsp += share;
+      });
       var dl = Math.max(0, (inc - before) / daysLeft);
       var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft});
       if (localStorage.getItem("masroof-summary") !== v) localStorage.setItem("masroof-summary", v);
     } catch(e){}
+  }
+  /* مدة كفاية المشتريات: آخر شراء لكل صنف، ومتى ينتهي بحسب مدة كفايته */
+  function stock(){
+    var td = today(), latest = {};
+    expenses.forEach(function(e){ if (e.item && e.days >= 1 && itemOf(e.item) && e.date <= td && (!latest[e.item] || e.date > latest[e.item].date)) latest[e.item] = e; });
+    var rows = Object.keys(latest).map(function(k){ var e = latest[k], end = addDays(e.date, Math.round(e.days) - 1); return {it:itemOf(k), e:e, end:end, left:dayDiff(td, end) + 1}; })
+      .filter(function(x){ return x.left > -7; }).sort(function(a, b){ return a.left - b.left; });
+    $("stock-card").hidden = !rows.length;
+    $("stock").innerHTML = rows.map(function(x){
+      var st = x.left <= 0 ? '<span class="pill over">انتهى</span>' : x.left <= 2 ? '<span class="pill near">' + (x.left === 1 ? "آخر يوم" : "باقي يومان") + '</span>' : '<span class="pill ok">باقي ' + daysWord(x.left) + '</span>';
+      return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>اشتُري ' + esc(dayFmt.format(dateOf(x.e.date))) + ' · يكفي حتى ' + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + '</li>';
+    }).join("");
   }
   function setTick(el, prog){ el.hidden = prog == null; if (prog != null) el.style.insetInlineStart = (prog * 100) + "%"; }
 
@@ -559,9 +641,35 @@ body.has-tabs main{padding-bottom:96px}
     $("a-cat").innerHTML = cfg.cats.filter(function(c){ return !carLocked(c.id); }).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join("");
     if (catId) $("a-cat").value = catId;
     $("a-amt").value = ""; $("a-note").value = "";
+    $("a-item").innerHTML = '<option value="">بدون صنف (مصروف عام)</option>' + ["الطعام", "مستلزمات البيت"].map(function(g){
+      return '<optgroup label="' + g + '">' + CATALOG.filter(function(x){ return x.g === g; }).map(function(x){ return '<option value="' + x.id + '">' + esc(x.n) + '</option>'; }).join("") + '</optgroup>'; }).join("");
+    $("a-item").value = ""; itemDraw(true);
     $("a-date").value = month === today().slice(0,7) ? today() : month + "-01";
     resetWarn(); room(); open($("add-dlg")); $("a-amt").focus();
   }
+  var daysManual = false;
+  function itemCalc(){
+    var it = itemOf($("a-item").value), q = num($("a-qty").value);
+    if (it && q > 0 && !daysManual) $("a-days").value = Math.max(1, Math.ceil(q / rateOf(it) - 1e-9));
+    var d = Math.round(num($("a-days").value)), a = num($("a-amt").value), h = $("a-item-hint");
+    h.hidden = !(it && d >= 1);
+    if (it && d >= 1) h.textContent = "تكفي " + daysWord(d) + (d > 1 ? " حتى " + dayFmt.format(dateOf(addDays($("a-date").value || today(), d - 1))) : "") + (a > 0 && d > 1 ? " · نحو " + fmt(a / d) + " ريال في اليوم" : "") + ".";
+  }
+  function itemDraw(reset){
+    var show = $("a-cat").value === ITEM_CAT, it = show ? itemOf($("a-item").value) : null;
+    $("a-item-box").hidden = !show; $("a-qty-box").hidden = !it;
+    if (!show) $("a-item").value = "";
+    if (it){
+      $("a-unit").textContent = it.u; daysManual = false;
+      $("a-packs").innerHTML = it.p.map(function(p){ return '<button type="button" class="btn sm" data-q="' + p + '">' + qtyFmt(p) + " " + esc(it.u) + '</button>'; }).join("");
+      if (reset !== false) $("a-qty").value = it.p[0];
+      itemCalc();
+    } else $("a-item-hint").hidden = true;
+  }
+  $("a-item").addEventListener("change", function(){ itemDraw(); });
+  $("a-qty").addEventListener("input", function(){ daysManual = false; itemCalc(); });
+  $("a-days").addEventListener("input", function(){ daysManual = true; itemCalc(); });
+  $("a-packs").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-q]"); if (!b) return; $("a-qty").value = b.dataset.q; daysManual = false; itemCalc(); });
   function resetWarn(){ forceOver = false; $("a-warn").hidden = true; $("a-save").textContent = "حفظ"; }
   function room(){
     var c = cfg.cats.find(function(x){ return x.id === $("a-cat").value; }), d = $("a-date").value || today(), m = d.slice(0,7);
@@ -570,9 +678,9 @@ body.has-tabs main{padding-bottom:96px}
     el.textContent = rest > 0 ? "المتاح في «" + c.name + "» هذا الشهر: " + fmt(rest) + " ريال من " + fmt(L) + "." : "بند «" + c.name + "» استنفد حده (" + fmt(L) + " ريال) هذا الشهر.";
     return rest;
   }
-  $("a-cat").addEventListener("change", function(){ resetWarn(); room(); });
-  $("a-date").addEventListener("change", function(){ resetWarn(); room(); });
-  $("a-amt").addEventListener("input", resetWarn);
+  $("a-cat").addEventListener("change", function(){ resetWarn(); room(); itemDraw(); });
+  $("a-date").addEventListener("change", function(){ resetWarn(); room(); itemCalc(); });
+  $("a-amt").addEventListener("input", function(){ resetWarn(); itemCalc(); });
   $("add-form").addEventListener("submit", async function(ev){
     ev.preventDefault();
     var amt = num($("a-amt").value), date = $("a-date").value, w = $("a-warn");
@@ -585,8 +693,18 @@ body.has-tabs main{padding-bottom:96px}
       $("a-save").textContent = "سجّل مع التجاوز"; return;
     }
     var rec = {cat:$("a-cat").value, amount:Math.round(amt * 100) / 100, date:date, note:$("a-note").value.trim().slice(0, 80), at:new Date().toISOString()};
+    var it = rec.cat === ITEM_CAT ? itemOf($("a-item").value) : null, newRate = null;
+    if (it){
+      var q = num($("a-qty").value), dd = Math.round(num($("a-days").value));
+      rec.item = it.id; rec.unit = it.u;
+      if (q > 0) rec.qty = Math.round(q * 100) / 100;
+      if (dd >= 1) rec.days = Math.min(dd, 366);
+      /* إن عدّل المستخدم المدة بيده نحفظ معدل استهلاك أسرته لهذا الصنف */
+      if (daysManual && q > 0 && dd >= 1) newRate = q / dd;
+    }
     var btn = $("a-save"); btn.disabled = true;
     try {
+      if (newRate){ var rs = Object.assign({}, cfg.rates || {}); rs[it.id] = newRate; try { await saveCfg(cleanCfg(Object.assign({}, cfg, {rates:rs}))); } catch(e){} }
       if (db) await db.collection("expenses").doc().set(rec);
       else { expenses.push(Object.assign({id:newId()}, rec)); saveLocal(); }
       month = date.slice(0,7); $("add-dlg").close(); render();
@@ -692,6 +810,7 @@ body.has-tabs main{padding-bottom:96px}
     if (!next.cats.length){ w.hidden = false; w.textContent = "أضف بنداً واحداً على الأقل."; return; }
     if (cfg && cfg.months) next.months = cfg.months;
     if (cfg && cfg.adjs) next.adjs = cfg.adjs;
+    if (cfg && cfg.rates) next.rates = cfg.rates;
     try {
       await saveCfg(next);
       $("cfg-dlg").close(); render();
@@ -730,7 +849,7 @@ body.has-tabs main{padding-bottom:96px}
   async function setOnce(val){
     var months = {}; Object.keys(cfg.months || {}).forEach(function(k){ months[k] = cfg.months[k]; });
     if (val) months[month] = val; else delete months[month];
-    var next = {income:cfg.income, cats:cfg.cats, months:months, adjs:cfg.adjs};
+    var next = {income:cfg.income, cats:cfg.cats, months:months, adjs:cfg.adjs, rates:cfg.rates};
     await saveCfg(cleanCfg(next));
     $("once-dlg").close(); render();
   }
