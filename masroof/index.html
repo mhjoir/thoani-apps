@@ -319,7 +319,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 37;
+  var VERSION = 38;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -362,6 +362,8 @@ body.has-tabs main{padding-bottom:96px}
     {id:"detergent", n:"صابون غسيل", u:"كجم", r:0.1, p:[3,5,7], g:"مستلزمات البيت"},
     {id:"dish", n:"سائل جلي", u:"عبوة", r:0.05, p:[1,2], g:"مستلزمات البيت"},
     {id:"floor", n:"منظف ومعقم", u:"عبوة", r:0.05, p:[1,2], g:"مستلزمات البيت"},
+    /* فرع «البقالة»: مشتريات البقالة المتفرقة، بلا كمية ولا متابعة مدة كفاية (ns) */
+    {id:"baqala", n:"بقالة", u:"", r:1, p:[], g:"البقالة", ns:1},
     {id:"tissue", n:"مناديل", u:"ربطة", r:0.1, p:[1,2], g:"مستلزمات البيت"},
     {id:"toilet-paper", n:"مناديل حمام", u:"ربطة", r:1/15, p:[1,2], g:"مستلزمات البيت"},
     {id:"bags", n:"أكياس نفايات", u:"ربطة", r:1/30, p:[1,2], g:"مستلزمات البيت"},
@@ -849,7 +851,7 @@ body.has-tabs main{padding-bottom:96px}
   var stockRows = [];
   function stock(){
     var td = today(), latest = {};
-    expenses.forEach(function(e){ if (e.item && e.days >= 1 && itemOf(e.item) && e.date <= td && (!latest[e.item] || e.date > latest[e.item].date || (e.date === latest[e.item].date && String(e.at || "") > String(latest[e.item].at || "")))) latest[e.item] = e; });
+    expenses.forEach(function(e){ if (e.item && e.days >= 1 && itemOf(e.item) && !itemOf(e.item).ns && e.date <= td && (!latest[e.item] || e.date > latest[e.item].date || (e.date === latest[e.item].date && String(e.at || "") > String(latest[e.item].at || "")))) latest[e.item] = e; });
     var hav = (cfg && cfg.have) || {};
     Object.keys(hav).forEach(function(k){ var x = hav[k]; if (itemOf(k) && x.date <= td && (!latest[k] || x.date > latest[k].date)) latest[k] = {item:k, date:x.date, days:x.days, hv:true}; });
     fuelRows.forEach(function(e){ if (e.key && e.days >= 1 && e.date <= td && (!latest[e.key] || e.date > latest[e.key].date)) latest[e.key] = e; });
@@ -900,7 +902,7 @@ body.has-tabs main{padding-bottom:96px}
     $("a-cat").innerHTML = cfg.cats.filter(function(c){ return !carLocked(c.id); }).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join("");
     if (catId) $("a-cat").value = catId;
     $("a-amt").value = ""; $("a-note").value = ""; $("a-part-f").hidden = true;
-    $("a-item").innerHTML = '<option value="">بدون صنف (مصروف عام)</option>' + ["الطعام", "مستلزمات البيت"].map(function(g){
+    $("a-item").innerHTML = '<option value="">بدون صنف (مصروف عام)</option>' + ["الطعام", "مستلزمات البيت", "البقالة"].map(function(g){
       return '<optgroup label="' + g + '">' + CATALOG.filter(function(x){ return x.g === g; }).map(function(x){ return '<option value="' + x.id + '">' + esc(x.n) + '</option>'; }).join("") + '</optgroup>'; }).join("");
     $("a-item").value = ""; itemDraw(true);
     $("a-date").value = month === today().slice(0,7) ? today() : month + "-01";
@@ -924,9 +926,10 @@ body.has-tabs main{padding-bottom:96px}
   }
   function itemDraw(reset){
     var show = $("a-cat").value === ITEM_CAT, it = show ? itemOf($("a-item").value) : null;
-    $("a-item-box").hidden = !show; $("a-qty-f").hidden = !it; $("a-packs").hidden = !it;
+    $("a-item-box").hidden = !show; $("a-qty-f").hidden = !it || !!it.ns; $("a-packs").hidden = !it || !!it.ns;
     if (!show) $("a-item").value = "";
-    if (it){
+    if (it && it.ns){ $("a-qty").value = ""; daysManual = false; $("a-days").value = 1; itemCalc(); }
+    else if (it){
       $("a-unit").textContent = it.u; daysManual = false;
       $("a-packs").innerHTML = it.p.map(function(p){ return '<button type="button" class="btn sm" data-q="' + p + '">' + qtyFmt(p) + " " + esc(it.u) + '</button>'; }).join("");
       if (reset !== false) $("a-qty").value = it.p[0];
