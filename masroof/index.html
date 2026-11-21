@@ -281,7 +281,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 23;
+  var VERSION = 24;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -680,7 +680,10 @@ body.has-tabs main{padding-bottom:96px}
         }
       });
       var dl = Math.max(0, (inc - before) / daysLeft);
-      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, dayRows:dayRows, stock:stockRows,
+      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, dayRows:dayRows, stock:stockRows, ver:VERSION,
+        rows:expenses.concat(fuelRows).filter(function(e){ return e.date.slice(0,7) === m && (!E.from || e.date >= E.from); }).sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : String(b.at || "") < String(a.at || "") ? -1 : 1; }).map(function(e){
+          var c2 = cfg.cats.find(function(x){ return x.id === e.cat; }), i2 = e.item ? itemOf(e.item) : null;
+          return {id:e.id, n:e.ext ? (e.lbl || "السيارة") : i2 ? i2.n + (e.qty ? " " + qtyFmt(e.qty) + " " + (e.unit || i2.u) : "") : (e.note || (c2 ? c2.name : "مصروف")), c:c2 ? c2.name : "", a:e.amount, d:e.date, k:e.days > 1 ? Math.round(e.days) : 1, x:e.ext ? 1 : 0}; }),
         cats:cfg.cats.map(function(c){ return {n:c.name, s:Math.round(spentIn(m, c.id) * 100) / 100, l:Math.round(limitOf(m, c) * 100) / 100}; })});
       if (localStorage.getItem("masroof-summary") !== v) localStorage.setItem("masroof-summary", v);
     } catch(e){}
