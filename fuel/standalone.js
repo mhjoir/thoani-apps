@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "66";
+var VERSION = "67";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1535,7 +1535,7 @@ msPush();
   function rMore(){
     var s = sum();
     function m(k, ic, t, sub){ return '<button type="button" class="row" data-more="' + k + '"><span class="sq">' + ico(I[ic], 20) + '</span><span class="t"><b>' + t + '</b><small>' + sub + '</small></span><span class="mu">' + ico(I.chev, 18) + '</span></button>'; }
-    return '<div><h1>المزيد</h1></div><div class="card g0">' + m("car", "car", "السيارة", "العداد، الممشى، الاستهلاك، الصيانة") + m("exp", "sliders", "البنود والحدود", "الدخل وحدود البنود والتسويات") + '</div>' +
+    return '<div><h1>المزيد</h1></div><div class="card g0">' + m("car", "car", "السيارة", "العداد، الممشى، الاستهلاك، الصيانة") + m("exp", "sliders", "البنود والحدود", "الدخل وحدود البنود والتسويات") + m("stmt", "sliders", "كشف البنود", "أول المدة، المضاف، المصروف، رصيد آخر المدة") + '</div>' +
       '<div class="card g0">' + m("sync", "cloud", "النسخ الاحتياطي", lsGet(SYNCKEY) ? "مفعّل: بياناتك تُحفظ على الخادم" : "غير مفعّل: البيانات على هذا الجهاز فقط") + '</div>' +
       '<p class="note">دفتر المصروف · النسخة ' + esc(VERSION) + (s && s.ver ? " · المنزل " + esc(s.ver) : "") + '</p>';
   }
@@ -1609,7 +1609,9 @@ msPush();
     if (b.dataset.have){ haveItem(b.dataset.have); return; }
     if (b.dataset.f){ logF = b.dataset.f; draw(); return; }
     if (b.dataset.row){ rowDet(b.dataset.row); return; }
-    if (b.dataset.more){ var k = b.dataset.more; if (k === "sync") syncGo(); else S.show(k); }
+    if (b.dataset.more){ var k = b.dataset.more; if (k === "sync") syncGo();
+      else if (k === "stmt"){ var pv = cur; S.show("exp"); inFrame(function(d){ var o = d.getElementById("stmt-open"); if (!o) return false; o.click(); return true; }); back(pv); }
+      else S.show(k); }
   });
   window.addEventListener("storage", function(ev){ if (ev.key === "masroof-summary" && !v2.hidden) draw(); });
   document.addEventListener("visibilitychange", function(){ if (!document.hidden && !v2.hidden) draw(); });

@@ -87,6 +87,7 @@ button{cursor:pointer}
 .legend{margin:10px 0 0;color:var(--muted);font-size:.82rem;display:flex;align-items:center;gap:6px}
 .legend i{display:inline-block;width:2px;height:14px;background:var(--ink);opacity:.55}
 .log{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column}
+.stmt{width:100%;border-collapse:collapse;font-size:.72rem;font-variant-numeric:tabular-nums} .stmt th,.stmt td{padding:7px 3px;border-bottom:1px solid var(--line);text-align:end;white-space:nowrap} .stmt th{font-weight:600;color:var(--muted);white-space:normal;vertical-align:bottom} .stmt th:first-child,.stmt td:first-child{text-align:start;white-space:normal;min-width:74px} .stmt tr.st-sb td{color:var(--muted);font-size:.68rem} .stmt tr.st-sb td:first-child{padding-inline-start:12px} .stmt tr.st-tot td{font-weight:700;border-top:2px solid var(--line)} .stmt tr.st-hd td{font-weight:700;text-align:start;padding-top:14px;color:var(--accent,var(--ink))} .stmt .neg{color:var(--over)}
 .log li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
 .log .acts{display:flex;flex-direction:column;gap:5px;flex:none}
 .log .what{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -158,7 +159,7 @@ body.has-tabs main{padding-bottom:96px}
     <p class="note" id="adj-note" hidden style="margin-top:12px"></p>
     <div class="cats" id="cats"></div>
     <div class="settle" id="settle" hidden></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button type="button" class="btn sm" id="tr-open">تحويل بين البنود والفروع والمحجوز</button><button type="button" class="btn sm" id="sub-open">توزيع فروع الطعام</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button type="button" class="btn sm" id="tr-open">تحويل بين البنود والفروع والمحجوز</button><button type="button" class="btn sm" id="sub-open">توزيع فروع الطعام</button><button type="button" class="btn sm" id="stmt-open">كشف البنود</button></div>
     <p class="legend" id="legend" hidden><i></i> الخط الرأسي: أين وصل الشهر. إن تجاوزه الشريط فالصرف أسرع من الأيام.</p>
   </section>
 
@@ -274,6 +275,16 @@ body.has-tabs main{padding-bottom:96px}
   </div>
 </dialog>
 
+<dialog id="stmt-dlg" aria-labelledby="stmt-h">
+  <div class="form">
+    <h2 id="stmt-h">كشف البنود</h2>
+    <p class="hint" id="stmt-m" style="margin:0;color:var(--muted);font-size:.9rem"></p>
+    <div style="overflow-x:auto;outline:none"><table class="stmt" id="stmt-t"></table></div>
+    <p class="hint" style="margin:0;color:var(--muted);font-size:.82rem">أول المدة: حد البند في بداية الشهر بعد خصم العجز المرحَّل. المضاف: صافي التحويلات والمبالغ الخارجية (السالب سحبٌ من البند). الرصيد = أول المدة + المضاف − المصروف.</p>
+    <div class="row"><button type="button" class="btn" id="stmt-x">إغلاق</button></div>
+  </div>
+</dialog>
+
 <dialog id="sub-dlg" aria-labelledby="sb-h">
   <form class="form" id="sub-form">
     <h2 id="sb-h">توزيع حد «الطعام ومستلزمات البيت» على فروعه</h2>
@@ -331,7 +342,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 40;
+  var VERSION = 41;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -1109,6 +1120,33 @@ body.has-tabs main{padding-bottom:96px}
     try { await saveCfg(cleanCfg(Object.assign({}, cfg, {have:h}))); $("have-dlg").close(); render(); }
     catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
   });
+
+  /* ---------- كشف البنود: أول المدة، المضاف، المصروف، رصيد آخر المدة ---------- */
+  function stmtRows(m){
+    var E = eff(m), w = subW(), out = {cats:[], res:[]};
+    cfg.cats.forEach(function(c){
+      var ci = carryIn(m, c), op = E.limit(c) - ci, ad = adjNet(m, c.id), sp = spentIn(m, c.id);
+      out.cats.push({n:c.name, o:op, a:ad, s:sp, c:op + ad - sp});
+      if (c.id === ITEM_CAT) SUBS.forEach(function(sx){ var uid = c.id + ":" + sx.k, so = E.limit(c) * w[sx.k] - (sx.k === "t" ? ci : 0), sl = uLimit(m, uid), ss = uSpent(m, uid); out.cats.push({n:"فرع " + sx.n, o:so, a:sl - so, s:ss, c:sl - ss, sub:1}); });
+    });
+    ((cfg && cfg.res) || []).forEach(function(r){
+      var op = Math.max(0, resSaved(r, shift(m, -1))), cl = resSaved(r, m), pd = (r.paid || []).reduce(function(a, p){ return a + (p.d.slice(0,7) === m ? p.a : 0); }, 0);
+      if (op > 0.005 || cl > 0.005 || pd > 0.005) out.res.push({n:r.n, o:op, a:cl - op + pd, s:pd, c:cl});
+    });
+    return out;
+  }
+  $("stmt-open").addEventListener("click", function(){
+    if (!cfg) return;
+    var d = stmtRows(month), f = function(x){ var v = Math.round(x * 100) / 100; return (v < 0 ? '<span class="neg">−' + fmt(-v) + '</span>' : fmt(v)); };
+    var row = function(r, cls){ return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + esc(r.n) + '</td><td>' + f(r.o) + '</td><td>' + f(r.a) + '</td><td>' + f(r.s) + '</td><td>' + f(r.c) + '</td></tr>'; };
+    var tot = function(list, n){ var t = {n:n, o:0, a:0, s:0, c:0}; list.forEach(function(r){ if (!r.sub){ t.o += r.o; t.a += r.a; t.s += r.s; t.c += r.c; } }); return t; };
+    $("stmt-m").textContent = "المدة: " + monthFmt.format(dateOf(month + "-01")) + (eff(month).from ? " (من " + dayFmt.format(dateOf(eff(month).from)) + ")" : "");
+    $("stmt-t").innerHTML = '<thead><tr><th>البند</th><th>أول المدة</th><th>المضاف خلال المدة</th><th>المصروف خلال المدة</th><th>رصيد آخر المدة</th></tr></thead><tbody>' +
+      d.cats.map(function(r){ return row(r, r.sub ? "st-sb" : ""); }).join("") + row(tot(d.cats, "مجموع البنود"), "st-tot") +
+      (d.res.length ? '<tr class="st-hd"><td colspan="5">المبالغ المحجوزة</td></tr>' + d.res.map(function(r){ return row(r, ""); }).join("") + row(tot(d.res, "مجموع المحجوز"), "st-tot") : '') + '</tbody>';
+    open($("stmt-dlg")); try { $("stmt-dlg").scrollTop = 0; } catch(e){}
+  });
+  $("stmt-x").addEventListener("click", function(){ $("stmt-dlg").close(); });
 
   /* ---------- توزيع فروع الطعام ---------- */
   $("sub-open").addEventListener("click", function(){
