@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "40";
+var VERSION = "41";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1040,6 +1040,7 @@ msPush();
     '<div class="ends"><span id="hm-spent">مصروف الشهر <b>—</b></span><span id="hm-left" class="left">الباقي <b>—</b></span></div><span class="u" id="hm-u"></span></div>' +
     '<p id="home-month"></p>' +
     '<div id="home-stats">' +
+    '<div class="st wide" data-det="stock" role="button" tabindex="0"><span class="k">مدة كفاية المشتريات</span><span class="v" id="hs-stock">—</span><span class="u" id="hs-stock-u">اضغط لعرض الأصناف</span></div>' +
     '<div class="st" data-det="fuel" role="button" tabindex="0"><span class="k">بنزين الشهر</span><span class="v" id="hs-fuel">—</span><span class="u" id="hs-fuel-u">ريال</span></div>' +
     '<div class="st" data-det="km" role="button" tabindex="0"><span class="k">الممشى خلال الشهر</span><span class="v" id="hs-km">—</span><span class="u" id="hs-km-u">كم</span></div>' +
     '<div class="st wide" data-det="since" role="button" tabindex="0"><span class="k">الممشى منذ آخر تعبئة بنزين</span><span class="v" id="hs-since">—</span><span class="u" id="hs-since-u">كم</span></div>' +
@@ -1105,6 +1106,13 @@ msPush();
         el("hd-spent").innerHTML = "المحسوب على اليوم <b>—</b>"; el("hd-paid").innerHTML = "المدفوع فعلياً <b>—</b>"; el("hd-aleft").innerHTML = "المتبقي الفعلي <b>—</b>"; el("ha-lim").textContent = "—"; el("ha-fill").style.width = "0"; el("home-act").className = "hbar"; el("hd-left").innerHTML = "الباقي <b>—</b>"; el("hd-u").textContent = "يظهر بعد تحميل قسم المنزل";
       }
       det.s = s && s.m === ym ? s : null; det.today = tdy;
+      var stk = det.s && det.s.d === tdy && det.s.stock ? det.s.stock : null;
+      if (stk){
+        var ended = stk.filter(function(x){ return x.left <= 0; }).length, soon = stk.filter(function(x){ return x.left > 0 && x.left <= 2; }).length;
+        el("hs-stock").innerHTML = stk.length ? n0(stk.length) + ' <small>' + (stk.length === 1 ? "صنف" : stk.length === 2 ? "صنفان" : stk.length > 10 ? "صنفاً" : "أصناف") + '</small>' : "—";
+        el("hs-stock").className = "v" + (ended || soon ? " neg" : "");
+        el("hs-stock-u").textContent = !stk.length ? "يظهر بعد تسجيل مشتريات بكمياتها" : (ended ? ended + " انتهى" : "") + (ended && soon ? " · " : "") + (soon ? soon + " ينتهي خلال يومين" : "") + (!ended && !soon ? "كلها كافية حالياً" : "") + " · اضغط للتفاصيل";
+      } else { el("hs-stock").textContent = "—"; el("hs-stock").className = "v"; el("hs-stock-u").textContent = "يظهر بعد تحميل قسم المنزل"; }
       var mb = el("home-mon");
       if (s && s.m === ym){
         var ML = Number(s.income) || 0, msp = Number(s.spent) || 0, mlf = ML - msp, mpc = ML > 0 ? Math.min(100, msp / ML * 100) : (msp > 0 ? 100 : 0);
@@ -1193,6 +1201,13 @@ msPush();
         h = '<ul>' + (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }).map(function(c){ var over = c.s - c.l > 0.005; return li(c.n, "الحد " + n2(c.l) + (over ? " · تجاوز " + n2(c.s - c.l) : " · الباقي " + n2(c.l - c.s)), n2(c.s), over ? "bad" : ""); }).join("") +
           li("مجموع المصروف", "", n2(s.spent) + " ريال", "sum") + li("ميزانية الشهر", s.from ? "تُحسب من " + dm(s.from) : "", n2(s.income) + " ريال", "sum") + li(s.left < 0 ? "تجاوز" : "الباقي", "", n2(Math.abs(s.left)) + " ريال", s.left < 0 ? "sum bad" : "sum") + '</ul>';
       } else h = none;
+    } else if (kind === "stock"){
+      t = "مدة كفاية المشتريات";
+      var st = s && s.d === det.today && s.stock ? s.stock : [];
+      h = st.length ? '<ul>' + st.map(function(x){
+        var w = x.left <= 0 ? "انتهى" : x.left === 1 ? "آخر يوم" : x.left === 2 ? "باقي يومان" : "باقي " + x.left + (x.left > 10 ? " يوماً" : " أيام");
+        return li(x.n + (x.q ? " " + x.q : ""), (x.car ? "بتاريخ " : "اشتُري ") + dm(x.d) + (x.car ? " · تقديراً حتى " : " · يكفي حتى ") + dm(x.end), w, x.left <= 2 ? "bad" : ""); }).join("") + '</ul>' +
+        '<p>آخر شراء لكل صنف ومتى ينتهي بحسب مدة كفايته. البنزين والصيانة تقديرية.</p>' : '<p>لا توجد مشتريات مسجّلة بكمياتها بعد. سجّل مصروفاً في «الطعام ومستلزمات البيت» واختر الصنف والكمية.</p>';
     } else if (kind === "fuel"){
       t = "تعبئات البنزين هذا الشهر";
       var f = det.fills || [], tot = 0, lit = 0;

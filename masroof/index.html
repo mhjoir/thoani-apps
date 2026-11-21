@@ -265,7 +265,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 18;
+  var VERSION = 19;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -622,7 +622,7 @@ body.has-tabs main{padding-bottom:96px}
       return '<div class="srow"><span><b>' + esc(o.c.name) + '</b> · عجز <b class="neg">' + fmt(-o.d) + '</b></span><button type="button" class="btn sm" data-settle="' + esc(o.c.id) + '">تسوية</button></div>'; }).join("") : "";
     var al = adjs(month), nameOf = function(id){ var c = cats.find(function(x){ return x.id === id; }); return c ? c.name : "بند محذوف"; };
     $("adj-card").hidden = !al.length;
-    summary(); stock();
+    stock(); summary();
     $("adj-log").innerHTML = al.map(function(a){
       return '<li><span class="what"><b>' + (a.t === "move" ? "نقل من «" + esc(nameOf(a.from)) + "» إلى «" + esc(nameOf(a.to)) + "»" : "مبلغ خارجي إلى «" + esc(nameOf(a.to)) + "»") + '</b><span>' + (a.note ? esc(a.note) : (a.t === "move" ? "خصم من بند آخر" : "غير الراتب")) + '</span></span><span class="amt">' + fmt(a.amount) + '</span><button type="button" class="btn sm danger" data-adj="' + esc(a.id) + '">حذف</button></li>';
     }).join("");
@@ -657,18 +657,20 @@ body.has-tabs main{padding-bottom:96px}
         }
       });
       var dl = Math.max(0, (inc - before) / daysLeft);
-      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, dayRows:dayRows,
+      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, dayRows:dayRows, stock:stockRows,
         cats:cfg.cats.map(function(c){ return {n:c.name, s:Math.round(spentIn(m, c.id) * 100) / 100, l:Math.round(limitOf(m, c) * 100) / 100}; })});
       if (localStorage.getItem("masroof-summary") !== v) localStorage.setItem("masroof-summary", v);
     } catch(e){}
   }
   /* مدة كفاية المشتريات: آخر شراء لكل صنف، ومتى ينتهي بحسب مدة كفايته */
+  var stockRows = [];
   function stock(){
     var td = today(), latest = {};
     expenses.forEach(function(e){ if (e.item && e.days >= 1 && itemOf(e.item) && e.date <= td && (!latest[e.item] || e.date > latest[e.item].date)) latest[e.item] = e; });
     fuelRows.forEach(function(e){ if (e.key && e.days >= 1 && e.date <= td && (!latest[e.key] || e.date > latest[e.key].date)) latest[e.key] = e; });
     var rows = Object.keys(latest).map(function(k){ var e = latest[k], end = addDays(e.date, Math.round(e.days) - 1); return {it:e.ext ? {n:e.lbl, u:""} : itemOf(k), e:e, end:end, left:dayDiff(td, end) + 1, car:!!e.ext}; })
       .filter(function(x){ return x.left > -7; }).sort(function(a, b){ return a.left - b.left; });
+    stockRows = rows.map(function(x){ return {n:x.it.n, q:x.e.qty ? qtyFmt(x.e.qty) + " " + (x.e.unit || x.it.u) : "", d:x.e.date, end:x.end, left:x.left, car:x.car ? 1 : 0}; });
     $("stock-card").hidden = !rows.length;
     $("stock").innerHTML = rows.map(function(x){
       var st = x.left <= 0 ? '<span class="pill over">انتهى</span>' : x.left <= 2 ? '<span class="pill near">' + (x.left === 1 ? "آخر يوم" : "باقي يومان") + '</span>' : '<span class="pill ok">باقي ' + daysWord(x.left) + '</span>';
