@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "39";
+var VERSION = "40";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1029,9 +1029,12 @@ msPush();
   home.innerHTML = '<div class="in"><h2>دفتر المصروف</h2><div class="adds">' +
     '<button type="button" id="home-add-car"><b>إضافة مصروف السيارة</b><span>العداد ثم نوع المصروف</span></button>' +
     '<button type="button" id="home-add-exp"><b>إضافة مصروف المنزل</b><span>اختر نوع المصروف</span></button></div>' +
-    '<div id="home-day" class="hbar" data-det="day" role="button" tabindex="0"><div class="top"><span class="k">الحد اليومي (المنزل + السيارة)</span><span class="lim" id="hd-lim">—</span></div>' +
+    '<div id="home-day" class="hbar" data-det="day" role="button" tabindex="0"><div class="top"><span class="k">الحد اليومي بعد التوزيع (المنزل + السيارة)</span><span class="lim" id="hd-lim">—</span></div>' +
     '<div class="track" id="hd-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="المصروف من الحد اليومي"><div class="fill" id="hd-fill"></div></div>' +
-    '<div class="ends"><span id="hd-spent">المحسوب على اليوم <b>—</b></span><span id="hd-left" class="left">الباقي <b>—</b></span></div><div class="ends"><span id="hd-paid">المدفوع فعلياً اليوم <b>—</b></span><span id="hd-aleft">المتبقي الفعلي <b>—</b></span></div><span class="u" id="hd-u"></span></div>' +
+    '<div class="ends"><span id="hd-spent">المحسوب على اليوم <b>—</b></span><span id="hd-left" class="left">الباقي <b>—</b></span></div><span class="u" id="hd-u"></span></div>' +
+    '<div id="home-act" class="hbar" data-det="day" role="button" tabindex="0"><div class="top"><span class="k">المدفوع الفعلي اليوم (المنزل + السيارة)</span><span class="lim" id="ha-lim">—</span></div>' +
+    '<div class="track" id="ha-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="المدفوع فعلياً من الحد اليومي"><div class="fill" id="ha-fill"></div></div>' +
+    '<div class="ends"><span id="hd-paid">المدفوع فعلياً <b>—</b></span><span id="hd-aleft" class="left">المتبقي الفعلي <b>—</b></span></div><span class="u">ما خرج من الجيب اليوم مقارنةً بالحد اليومي، بلا توزيع على الأيام</span></div>' +
     '<div id="home-mon" class="hbar" data-det="mon" role="button" tabindex="0"><div class="top"><span class="k">حد الشهر (المنزل + السيارة)</span><span class="lim" id="hm-lim">—</span></div>' +
     '<div class="track" id="hm-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="المصروف من حد الشهر"><div class="fill" id="hm-fill"></div></div>' +
     '<div class="ends"><span id="hm-spent">مصروف الشهر <b>—</b></span><span id="hm-left" class="left">الباقي <b>—</b></span></div><span class="u" id="hm-u"></span></div>' +
@@ -1090,13 +1093,16 @@ msPush();
         box.className = lf < -0.005 ? "hbar over" : "hbar";
         el("hd-spent").innerHTML = "المحسوب على اليوم <b>" + n0(sp) + "</b>";
         var pd = Number(s.dayPaid) || 0, al = L - pd;
-        el("hd-paid").innerHTML = "المدفوع فعلياً اليوم <b>" + n0(pd) + "</b>";
-        el("hd-aleft").innerHTML = al < -0.005 ? "تجاوز فعلي <b style=\"color:var(--warn)\">" + n0(-al) + "</b>" : "المتبقي الفعلي <b>" + n0(al) + "</b>";
+        var apc = L > 0 ? Math.min(100, pd / L * 100) : (pd > 0 ? 100 : 0);
+        el("ha-lim").textContent = n0(L) + " ريال"; el("ha-fill").style.width = apc + "%"; el("ha-track").setAttribute("aria-valuenow", String(Math.round(apc)));
+        el("home-act").className = al < -0.005 ? "hbar over" : "hbar";
+        el("hd-paid").innerHTML = "المدفوع فعلياً <b>" + n0(pd) + "</b>";
+        el("hd-aleft").innerHTML = al < -0.005 ? "تجاوز فعلي <b>" + n0(-al) + "</b>" : "المتبقي الفعلي <b>" + n0(al) + "</b>";
         el("hd-left").innerHTML = lf < -0.005 ? "تجاوز <b>" + n0(-lf) + "</b>" : "الباقي <b>" + n0(lf) + "</b>";
         el("hd-u").textContent = "الباقي من ميزانية الشهر مقسوماً على " + s.daysLeft + (s.daysLeft > 10 ? " يوماً" : s.daysLeft > 2 ? " أيام" : s.daysLeft === 2 ? " يومين" : " يوم") + " باقية";
       } else {
         el("hd-lim").textContent = "—"; el("hd-fill").style.width = "0"; box.className = "hbar";
-        el("hd-spent").innerHTML = "المحسوب على اليوم <b>—</b>"; el("hd-paid").innerHTML = "المدفوع فعلياً اليوم <b>—</b>"; el("hd-aleft").innerHTML = "المتبقي الفعلي <b>—</b>"; el("hd-left").innerHTML = "الباقي <b>—</b>"; el("hd-u").textContent = "يظهر بعد تحميل قسم المنزل";
+        el("hd-spent").innerHTML = "المحسوب على اليوم <b>—</b>"; el("hd-paid").innerHTML = "المدفوع فعلياً <b>—</b>"; el("hd-aleft").innerHTML = "المتبقي الفعلي <b>—</b>"; el("ha-lim").textContent = "—"; el("ha-fill").style.width = "0"; el("home-act").className = "hbar"; el("hd-left").innerHTML = "الباقي <b>—</b>"; el("hd-u").textContent = "يظهر بعد تحميل قسم المنزل";
       }
       det.s = s && s.m === ym ? s : null; det.today = tdy;
       var mb = el("home-mon");
