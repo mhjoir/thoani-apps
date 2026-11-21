@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "47";
+var VERSION = "48";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1151,7 +1151,9 @@ msPush();
         (car.odoLog || []).forEach(function(q){ raw.push({d:String(q.t).slice(0,10), o:Number(q.o)}); });
         if (car.odoNow != null && car.odoAt) raw.push({d:String(car.odoAt).slice(0,10), o:Number(car.odoNow)});
       }
+      det.hasCar = !!car;
       var byDay = {}; raw.forEach(function(q){ if (/^\d{4}-\d\d-\d\d$/.test(q.d) && (byDay[q.d] == null || q.o > byDay[q.d])) byDay[q.d] = q.o; });
+      det.odoToday = byDay[tdy] != null;
       var pts = []; Object.keys(byDay).sort().forEach(function(d){ if (!pts.length || byDay[d] >= pts[pts.length - 1].o) pts.push({d:d, o:byDay[d], t:new Date(d + "T12:00").getTime()}); });
       function odoAt(t){
         if (t <= pts[0].t) return pts[0].o;
@@ -1216,6 +1218,16 @@ msPush();
   });
   function li(a, sub, v, cls){ return '<li' + (cls ? ' class="' + cls + '"' : '') + '><span>' + esc(a) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span><b>' + esc(v) + '</b></li>'; }
   function esc(x){ return String(x).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  /* المتاح لكل يوم من الأيام السبعة القادمة: الحد اليومي ناقص نصيب ذلك اليوم من المشتريات الموزّعة */
+  function weekHtml(s){
+    var w = s.week; if (!w || !w.length) return "";
+    var L = Number(s.dayLimit) || 0, tot = 0, b = new Date(s.d + "T12:00"), wd = ["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+    var h = '<h2 style="margin-top:16px;font-size:1.05rem">المتاح خلال ' + (w.length === 7 ? "أسبوع" : w.length === 1 ? "آخر يوم في الشهر" : w.length === 2 ? "يومين" : w.length + " أيام") + '</h2><ul>' + w.map(function(c, j){
+      var d = new Date(b.getTime() + j * 86400000), a = L - c; tot += a;
+      return li(j === 0 ? "اليوم" : j === 1 ? "غداً" : wd[d.getDay()] + " " + d.getDate() + "/" + (d.getMonth() + 1), c > 0.005 ? "محجوز " + n2(c) + " من مصروفات موزّعة" : "لا شيء محجوز", n2(Math.abs(a)) + (a < -0.005 ? " تجاوز" : ""), a < -0.005 ? "bad" : ""); }).join("") +
+      li("مجموع المتاح", "", n2(tot) + " ريال", tot < 0 ? "sum bad" : "sum") + '</ul><p>الحد يبقى ' + n2(L) + ' كل يوم إن صرفت بقدره؛ يرتفع إن وفّرت وينخفض إن تجاوزت.' + (w.length < 7 ? " بقية الأسبوع في الشهر القادم." : "") + '</p>';
+    return h;
+  }
   function showDet(kind){
     stats();
     var t = "", h = "", s = det.s, none = '<p>لا توجد بيانات بعد.</p>';
@@ -1223,7 +1235,7 @@ msPush();
       t = "تفاصيل الحد اليومي";
       if (s && s.d === det.today && s.dayLimit != null){
         var rows = (s.dayRows || []).slice().sort(function(a, b){ return b.s - a.s; });
-        h = '<ul>' + li("ميزانية الشهر", "", n2(s.income) + " ريال") + li("المحسوب على الأيام السابقة", "", n2(s.before || 0) + " ريال") + li("الأيام الباقية ومنها اليوم", "", String(s.daysLeft)) + li("الحد اليومي", "(الميزانية − السابق) ÷ الأيام الباقية", n2(s.dayLimit) + " ريال", "sum") + '</ul>' +
+        h = '<ul>' + li("ميزانية الشهر", "", n2(s.income) + " ريال") + li("المحسوب على الأيام السابقة", "", n2(s.before || 0) + " ريال") + li("الأيام الباقية ومنها اليوم", "", String(s.daysLeft)) + li("الحد اليومي", "(الميزانية − السابق) ÷ الأيام الباقية", n2(s.dayLimit) + " ريال", "sum") + '</ul>' + weekHtml(s) +
           '<h2 style="margin-top:16px;font-size:1.05rem">المحسوب على اليوم</h2>' + (rows.length ? '<ul>' + rows.map(function(r){
             return li(r.n, r.k > 1 ? "من " + n2(r.a) + " ريال بتاريخ " + dm(r.d) + " · اليوم " + r.i + " من " + r.k : "مدفوع اليوم", n2(r.s)); }).join("") +
             li("المجموع", "", n2(s.daySpent) + " ريال", "sum") + li(s.dayLimit - s.daySpent < 0 ? "تجاوز" : "الباقي لليوم", "", n2(Math.abs(s.dayLimit - s.daySpent)) + " ريال", s.dayLimit - s.daySpent < 0 ? "sum bad" : "sum") + '</ul>' : '<p>لا شيء محسوب على اليوم.</p>') +
@@ -1318,7 +1330,7 @@ msPush();
     stats();
     setTimeout(function(){ if (!frame.getAttribute("src")) frame.setAttribute("src", "../masroof/"); }, 600);
   });
-  window.__shell = {show:show, stats:stats, showDet:showDet, frame:frame, dm:dm, addCar:function(){ el("home-add-car").click(); }};
+  window.__shell = {odoDue:function(){ var n = new Date(); return !!det.hasCar && !det.odoToday && n.getHours() * 60 + n.getMinutes() >= 990; }, show:show, stats:stats, showDet:showDet, frame:frame, dm:dm, addCar:function(){ el("home-add-car").click(); }};
   show("home");
 })();
 
@@ -1445,7 +1457,10 @@ msPush();
       '<div class="two"><span>المصروف <b>' + n0(ms) + '</b></span><span>' + (mo ? "تجاوز" : "المتاح") + ' <b>' + n0(Math.abs(ml)) + '</b> من ' + n0(inc) + '</span></div></button>';
     var st = s.stock || [], miss = st.filter(function(x){ return x.left <= 0; }).length, fuel = st.find(function(x){ return x.car && x.n === "بنزين"; });
     if (miss) h += '<button type="button" class="al w" data-go="shop">' + ico(I.alert) + '<span>' + (miss === 1 ? "سلعة واحدة ناقصة" : miss === 2 ? "سلعتان ناقصتان" : miss + (miss > 10 ? " سلعة ناقصة" : " سلع ناقصة")) + ' للشراء</span>' + ico(I.chev, 18) + '</button>';
-    if (fuel) h += '<button type="button" class="al" data-det="since"><span class="ic">' + ico(I.fuel) + '</span><span><b>البنزين</b> ' + (fuel.left > 0 ? "يكفي " + days(fuel.left) + " تقريباً" : "انتهت مدته المقدّرة") + '</span>' + ico(I.chev, 18) + '</button>';
+    /* تنبيه يومي: من 4:30 عصراً حتى تُسجَّل قراءة العداد يتحول سطر البنزين إلى طلب تسجيل الممشى */
+    var due = false; try { due = S.odoDue(); } catch(e){}
+    if (due) h += '<button type="button" class="al w" data-odo="1">' + ico(I.gauge) + '<span>يلزم تسجيل ممشى اليوم' + (fuel ? ' ليُحسب كم يكفي البنزين' : '') + '</span>' + ico(I.chev, 18) + '</button>';
+    else if (fuel) h += '<button type="button" class="al" data-det="since"><span class="ic">' + ico(I.fuel) + '</span><span><b>البنزين</b> ' + (fuel.left > 0 ? "يكفي " + days(fuel.left) + " تقريباً" : "انتهت مدته المقدّرة") + '</span>' + ico(I.chev, 18) + '</button>';
     if (!lsGet(SYNCKEY)) h += '<button type="button" class="al" data-sync="1"><span class="ic">' + ico(I.cloud) + '</span><span>بياناتك على هذا الجهاز فقط. فعّل النسخ الاحتياطي.</span>' + ico(I.chev, 18) + '</button>';
     return h;
   }
@@ -1522,11 +1537,15 @@ msPush();
     if (ev.target.closest("#v2-add-x")){ add.close(); return; }
     var b = ev.target.closest("button[data-add]"); if (!b) return; add.close();
     var k = b.dataset.add;
-    if (k === "odo"){ var prev = cur; S.show("car"); try { $("mnt-open").click(); $("odo-open").click(); } catch(e){} back(prev); return; }
+    if (k === "odo"){ odoGo(); return; }
     if (k === "fuel" || k === "svc") addCar(); else if (k === "shop") addHome("food"); else addHome(null);
   });
+  function odoGo(){ var prev = cur; S.show("car"); try { $("mnt-open").click(); $("odo-open").click(); } catch(e){} back(prev); }
+  /* يظهر التنبيه عند 4:30 حتى لو كان التطبيق مفتوحاً قبلها */
+  var dueWas = false; setInterval(function(){ if (v2.hidden || document.hidden || cur !== "home") return; var d = false; try { S.stats(); d = S.odoDue(); } catch(e){} if (d !== dueWas){ dueWas = d; draw(); } }, 60000);
   v2.addEventListener("click", function(ev){
     var b = ev.target.closest("button"); if (!b) return;
+    if (b.dataset.odo){ odoGo(); return; }
     if (b.dataset.det){ S.showDet(b.dataset.det); return; }
     if (b.dataset.go){ go(b.dataset.go); return; }
     if (b.dataset.sync){ syncGo(); return; }
