@@ -198,9 +198,9 @@ body.has-tabs main{padding-bottom:96px}
     <div class="f"><label for="a-cat">البند</label><select id="a-cat"></select></div>
     <p class="msg info" id="a-room" hidden></p>
     <div class="f" id="a-item-box" hidden><label for="a-item">الصنف</label><select id="a-item"></select></div>
-    <div id="a-qty-box" hidden>
-      <div class="qd"><div class="f"><label for="a-qty">الكمية (<span id="a-unit"></span>)</label><input type="text" inputmode="decimal" id="a-qty" autocomplete="off"></div>
-      <div class="f"><label for="a-days">تكفي (أيام)</label><input type="text" inputmode="numeric" id="a-days" autocomplete="off"></div></div>
+    <div id="a-qty-box">
+      <div class="qd"><div class="f" id="a-qty-f" hidden><label for="a-qty">الكمية (<span id="a-unit"></span>)</label><input type="text" inputmode="decimal" id="a-qty" autocomplete="off"></div>
+      <div class="f"><label for="a-days">يغطي كم يوماً؟ (إلزامي)</label><input type="text" inputmode="numeric" id="a-days" autocomplete="off"></div></div>
       <div class="row" id="a-packs" style="margin-top:8px"></div>
       <p class="hint" id="a-item-hint" hidden style="margin:8px 0 0;color:var(--muted);font-size:.9rem"></p>
     </div>
@@ -264,7 +264,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 16;
+  var VERSION = 17;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -356,6 +356,10 @@ body.has-tabs main{padding-bottom:96px}
         out.months[k] = {income:Number(o.income), limits:lim};
         if (/^\d{4}-\d{2}-\d{2}$/.test(String(o.from || ""))) out.months[k].from = String(o.from);
       });
+    }
+    if (v.catDays && typeof v.catDays === "object"){
+      var cdd = {}; Object.keys(v.catDays).forEach(function(k){ var n = Math.round(Number(v.catDays[k])); if (n >= 1 && n <= 366) cdd[k] = n; });
+      if (Object.keys(cdd).length) out.catDays = cdd;
     }
     if (v.rates && typeof v.rates === "object"){
       var rt = {}; Object.keys(v.rates).forEach(function(k){ var r = Number(v.rates[k]); if (r > 0 && itemOf(k)) rt[k] = Math.round(r * 10000) / 10000; });
@@ -626,7 +630,7 @@ body.has-tabs main{padding-bottom:96px}
     $("log-empty").hidden = rows.length > 0;
     $("log").innerHTML = rows.map(function(e){
       var c = cats.find(function(x){ return x.id === e.cat; });
-      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.ext && e.days > 1 ? " · تكفي " + daysWord(e.days) : "") + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") + (e.days > 1 ? " · تكفي " + daysWord(e.days) : "") : "") + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
+      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") : "") + (e.days > 1 ? " · " + (e.item || e.ext ? "تكفي " : "يغطي ") + daysWord(e.days) : "") + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
         '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button>') + '</li>';
     }).join("");
   }
@@ -697,24 +701,27 @@ body.has-tabs main{padding-bottom:96px}
     $("a-date").value = month === today().slice(0,7) ? today() : month + "-01";
     resetWarn(); room(); open($("add-dlg")); $("a-amt").focus();
   }
+  /* مدة التغطية إلزامية لكل مصروف: إيجار وفواتير شهرية 30 يوماً افتراضياً، والباقي يوم واحد، ويُحفظ آخر ما اختاره المستخدم لكل بند */
+  var CAT_DAYS = {rent:30, util:30, telecom:30, kids:30, save:30};
+  function catDays(id){ var r = cfg && cfg.catDays && Number(cfg.catDays[id]); return r >= 1 ? Math.round(r) : (CAT_DAYS[id] || 1); }
   var daysManual = false;
   function itemCalc(){
     var it = itemOf($("a-item").value), q = num($("a-qty").value);
     if (it && q > 0 && !daysManual) $("a-days").value = Math.max(1, Math.ceil(q / rateOf(it) - 1e-9));
     var d = Math.round(num($("a-days").value)), a = num($("a-amt").value), h = $("a-item-hint");
-    h.hidden = !(it && d >= 1);
-    if (it && d >= 1) h.textContent = "تكفي " + daysWord(d) + (d > 1 ? " حتى " + dayFmt.format(dateOf(addDays($("a-date").value || today(), d - 1))) : "") + (a > 0 && d > 1 ? " · نحو " + fmt(a / d) + " ريال في اليوم" : "") + ".";
+    h.hidden = !(d >= 1);
+    if (d >= 1) h.textContent = (it ? "تكفي " : "يغطي ") + daysWord(d) + (d > 1 ? " حتى " + dayFmt.format(dateOf(addDays($("a-date").value || today(), d - 1))) : "") + (a > 0 && d > 1 ? " · نحو " + fmt(a / d) + " ريال في اليوم" : "") + ".";
   }
   function itemDraw(reset){
     var show = $("a-cat").value === ITEM_CAT, it = show ? itemOf($("a-item").value) : null;
-    $("a-item-box").hidden = !show; $("a-qty-box").hidden = !it;
+    $("a-item-box").hidden = !show; $("a-qty-f").hidden = !it; $("a-packs").hidden = !it;
     if (!show) $("a-item").value = "";
     if (it){
       $("a-unit").textContent = it.u; daysManual = false;
       $("a-packs").innerHTML = it.p.map(function(p){ return '<button type="button" class="btn sm" data-q="' + p + '">' + qtyFmt(p) + " " + esc(it.u) + '</button>'; }).join("");
       if (reset !== false) $("a-qty").value = it.p[0];
       itemCalc();
-    } else $("a-item-hint").hidden = true;
+    } else { daysManual = false; $("a-days").value = catDays($("a-cat").value); itemCalc(); }
   }
   $("a-item").addEventListener("change", function(){ itemDraw(); });
   $("a-qty").addEventListener("input", function(){ daysManual = false; itemCalc(); });
@@ -736,6 +743,8 @@ body.has-tabs main{padding-bottom:96px}
     var amt = num($("a-amt").value), date = $("a-date").value, w = $("a-warn");
     if (!(amt > 0)){ w.hidden = false; w.textContent = "اكتب المبلغ بالريال."; return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)){ w.hidden = false; w.textContent = "حدّد التاريخ."; return; }
+    var dAll = Math.round(num($("a-days").value));
+    if (!(dAll >= 1)){ w.hidden = false; w.textContent = "حدّد عدد الأيام التي يغطيها هذا المصروف (يوم واحد على الأقل)."; try { $("a-days").focus(); } catch(e){} return; }
     var rest = room();
     if (amt > rest + 0.005 && !forceOver){
       forceOver = true; w.hidden = false;
@@ -752,9 +761,12 @@ body.has-tabs main{padding-bottom:96px}
       /* إن عدّل المستخدم المدة بيده نحفظ معدل استهلاك أسرته لهذا الصنف */
       if (daysManual && q > 0 && dd >= 1) newRate = q / dd;
     }
+    rec.days = Math.min(dAll, 366);
+    var newCatDays = !it && rec.days !== catDays(rec.cat) ? rec.days : null;
     var btn = $("a-save"); btn.disabled = true;
     try {
       if (newRate){ var rs = Object.assign({}, cfg.rates || {}); rs[it.id] = newRate; try { await saveCfg(cleanCfg(Object.assign({}, cfg, {rates:rs}))); } catch(e){} }
+      if (newCatDays){ var cd = Object.assign({}, cfg.catDays || {}); cd[rec.cat] = newCatDays; try { await saveCfg(cleanCfg(Object.assign({}, cfg, {catDays:cd}))); } catch(e){} }
       if (db) await db.collection("expenses").doc().set(rec);
       else { expenses.push(Object.assign({id:newId()}, rec)); saveLocal(); }
       month = date.slice(0,7); $("add-dlg").close(); render();
@@ -861,6 +873,7 @@ body.has-tabs main{padding-bottom:96px}
     if (cfg && cfg.months) next.months = cfg.months;
     if (cfg && cfg.adjs) next.adjs = cfg.adjs;
     if (cfg && cfg.rates) next.rates = cfg.rates;
+    if (cfg && cfg.catDays) next.catDays = cfg.catDays;
     try {
       await saveCfg(next);
       $("cfg-dlg").close(); render();
@@ -899,7 +912,7 @@ body.has-tabs main{padding-bottom:96px}
   async function setOnce(val){
     var months = {}; Object.keys(cfg.months || {}).forEach(function(k){ months[k] = cfg.months[k]; });
     if (val) months[month] = val; else delete months[month];
-    var next = {income:cfg.income, cats:cfg.cats, months:months, adjs:cfg.adjs, rates:cfg.rates};
+    var next = {income:cfg.income, cats:cfg.cats, months:months, adjs:cfg.adjs, rates:cfg.rates, catDays:cfg.catDays};
     await saveCfg(cleanCfg(next));
     $("once-dlg").close(); render();
   }
