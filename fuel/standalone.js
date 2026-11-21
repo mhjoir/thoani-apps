@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "67";
+var VERSION = "68";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1354,9 +1354,9 @@ msPush();
     stats();
     setTimeout(function(){ if (!frame.getAttribute("src")) frame.setAttribute("src", "../masroof/"); }, 600);
   });
-  window.__shell = {/* تنبيهان في اليوم: من 7:00 صباحاً حتى أول قراءة، ومن 4:30 عصراً حتى قراءة تُسجَّل بعد 4:30 */
+  window.__shell = {/* ثلاثة تنبيهات في اليوم: 7:00 صباحاً، 4:30 عصراً، 9:00 مساءً. كل تنبيه يبقى حتى تُسجَّل قراءة بعد وقته */
     odoDue:function(){ var n = new Date(), t = n.getHours() * 60 + n.getMinutes(), ms = det.odoMins || []; if (!det.hasCar) return false;
-      if (t >= 990) return !ms.some(function(x){ return x >= 990; }); if (t >= 420) return !ms.length; return false; }, show:show, stats:stats, showDet:showDet, frame:frame, dm:dm, addCar:function(){ el("home-add-car").click(); }};
+      if (t >= 1260) return !ms.some(function(x){ return x >= 1260; }); if (t >= 990) return !ms.some(function(x){ return x >= 990; }); if (t >= 420) return !ms.length; return false; }, show:show, stats:stats, showDet:showDet, frame:frame, dm:dm, addCar:function(){ el("home-add-car").click(); }};
   show("home");
 })();
 
