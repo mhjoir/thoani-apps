@@ -264,7 +264,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 13;
+  var VERSION = 14;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -403,7 +403,49 @@ body.has-tabs main{padding-bottom:96px}
       if (p.indexOf("fills/") === 0 && fc && Number(d.amount) > 0){ rows.push({id:"fuel:" + p, cat:fc.id, amount:Number(d.amount), date:String(d.ts).slice(0,10), note:"تعبئة بنزين · من دفتر البنزين", at:String(d.ts), ext:true}); nf++; }
       else if (p.indexOf("services/") === 0 && cc && Number(d.cost) > 0){ rows.push({id:"fuel:" + p, cat:cc.id, amount:Number(d.cost), date:String(d.ts).slice(0,10), note:"صيانة · من دفتر البنزين", at:String(d.ts), ext:true}); ns++; }
     });
+    carSpans(rows, docs || {});
     fuelRows = rows; fuelDocs = docs || {}; fuelSrc = src; fuelInfo = {fills:nf, services:ns};
+  }
+  /* مدة كفاية مصروفات السيارة، مثل أصناف الطعام:
+     التعبئة تكفي حتى التعبئة التالية؛ وآخر تعبئة تُقدَّر بمتوسط الفترات السابقة، أو بلترات التعبئة ومعدل الاستهلاك والممشى اليومي.
+     الصيانة تكفي مدة دورتها (تغيير الزيت كل 5,000 كم افتراضياً) بحسب الممشى اليومي، أو بالأشهر المحددة للبند. */
+  function carSpans(rows, docs){
+    var byId = {}; rows.forEach(function(r){ byId[r.id] = r; });
+    var cars = {}, add = function(carId, d, o){ if (!carId || !/^\d{4}-\d\d-\d\d/.test(String(d)) || !(Number(o) > 0)) return; (cars[carId] = cars[carId] || []).push({d:String(d).slice(0,10), o:Number(o)}); };
+    Object.keys(docs).forEach(function(p){
+      var d = docs[p]; if (!d || typeof d !== "object") return;
+      if (p.indexOf("fills/") === 0 || p.indexOf("services/") === 0) add(d.carId, d.ts, d.odo);
+      else if (p.indexOf("cars/") === 0){ var id = p.slice(5); (d.odoLog || []).forEach(function(q){ add(id, q.t, q.o); }); if (d.odoNow != null && d.odoAt) add(id, d.odoAt, d.odoNow); }
+    });
+    var daily = {};
+    Object.keys(cars).forEach(function(id){
+      var a = cars[id].sort(function(x, y){ return x.d < y.d ? -1 : x.d > y.d ? 1 : x.o - y.o; }), span = dayDiff(a[0].d, a[a.length - 1].d), km = a[a.length - 1].o - a[0].o;
+      if (span >= 7 && km > 0) daily[id] = km / span;
+    });
+    var fills = {};
+    Object.keys(docs).forEach(function(p){ var d = docs[p]; if (p.indexOf("fills/") === 0 && d && d.ts && byId["fuel:" + p]) (fills[d.carId || ""] = fills[d.carId || ""] || []).push({p:p, d:d, date:String(d.ts).slice(0,10), ts:String(d.ts)}); });
+    Object.keys(fills).forEach(function(id){
+      var a = fills[id].sort(function(x, y){ return x.ts < y.ts ? -1 : 1; }), gaps = [];
+      a.forEach(function(f, i){
+        var r = byId["fuel:" + f.p], days = 0;
+        if (i < a.length - 1){ days = Math.max(1, dayDiff(f.date, a[i + 1].date)); gaps.push(days); }
+        else if (gaps.length >= 2) days = Math.round(gaps.reduce(function(s, x){ return s + x; }, 0) / gaps.length);
+        else {
+          var L = Number(f.d.liters) > 0 ? Number(f.d.liters) : (Number(f.d.price) > 0 ? Number(f.d.amount) / Number(f.d.price) : 0), avg = Number(f.d.avg), km = 0;
+          if (L > 0 && avg > 0) km = f.d.avgUnit === "km/l" ? L * avg : L / avg * 100;
+          if (km > 0 && daily[id] > 0) days = Math.ceil(km / daily[id]); else if (gaps.length) days = gaps[0]; else days = 7;
+        }
+        r.days = Math.max(1, Math.min(30, days)); r.lbl = "بنزين"; r.key = "fuel:" + id;
+      });
+    });
+    Object.keys(docs).forEach(function(p){
+      var d = docs[p], r = byId["fuel:" + p]; if (p.indexOf("services/") !== 0 || !d || !r) return;
+      var it = d.itemId ? docs["items/" + d.itemId] : null, km = it && Number(it.km) > 0 ? Number(it.km) : (d.itemId === "oil" ? 5000 : 0), mo = it && Number(it.months) > 0 ? Number(it.months) : 0, days = 0;
+      if (km > 0 && daily[d.carId] > 0) days = Math.round(km / daily[d.carId]);
+      if (mo > 0) days = days > 0 ? Math.min(days, mo * 30) : mo * 30;
+      r.lbl = it && it.name ? String(it.name) : (d.itemId === "oil" ? "تغيير زيت" : "صيانة"); r.key = "svc:" + (d.carId || "") + ":" + (d.itemId || p);
+      if (days > 1) r.days = Math.min(days, 366);
+    });
   }
   function loadFuel(){
     var docs = lsJson(FUELDB), src = "local";
@@ -584,7 +626,7 @@ body.has-tabs main{padding-bottom:96px}
     $("log-empty").hidden = rows.length > 0;
     $("log").innerHTML = rows.map(function(e){
       var c = cats.find(function(x){ return x.id === e.cat; });
-      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") + (e.days > 1 ? " · تكفي " + daysWord(e.days) : "") : "") + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
+      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.ext && e.days > 1 ? " · تكفي " + daysWord(e.days) : "") + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") + (e.days > 1 ? " · تكفي " + daysWord(e.days) : "") : "") + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
         '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button>') + '</li>';
     }).join("");
   }
@@ -612,12 +654,13 @@ body.has-tabs main{padding-bottom:96px}
   function stock(){
     var td = today(), latest = {};
     expenses.forEach(function(e){ if (e.item && e.days >= 1 && itemOf(e.item) && e.date <= td && (!latest[e.item] || e.date > latest[e.item].date)) latest[e.item] = e; });
-    var rows = Object.keys(latest).map(function(k){ var e = latest[k], end = addDays(e.date, Math.round(e.days) - 1); return {it:itemOf(k), e:e, end:end, left:dayDiff(td, end) + 1}; })
+    fuelRows.forEach(function(e){ if (e.key && e.days >= 1 && e.date <= td && (!latest[e.key] || e.date > latest[e.key].date)) latest[e.key] = e; });
+    var rows = Object.keys(latest).map(function(k){ var e = latest[k], end = addDays(e.date, Math.round(e.days) - 1); return {it:e.ext ? {n:e.lbl, u:""} : itemOf(k), e:e, end:end, left:dayDiff(td, end) + 1, car:!!e.ext}; })
       .filter(function(x){ return x.left > -7; }).sort(function(a, b){ return a.left - b.left; });
     $("stock-card").hidden = !rows.length;
     $("stock").innerHTML = rows.map(function(x){
       var st = x.left <= 0 ? '<span class="pill over">انتهى</span>' : x.left <= 2 ? '<span class="pill near">' + (x.left === 1 ? "آخر يوم" : "باقي يومان") + '</span>' : '<span class="pill ok">باقي ' + daysWord(x.left) + '</span>';
-      return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>اشتُري ' + esc(dayFmt.format(dateOf(x.e.date))) + ' · يكفي حتى ' + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + '</li>';
+      return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>' + (x.car ? 'بتاريخ ' : 'اشتُري ') + esc(dayFmt.format(dateOf(x.e.date))) + ' · ' + (x.car ? 'تقديراً حتى ' : 'يكفي حتى ') + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + '</li>';
     }).join("");
   }
   function setTick(el, prog){ el.hidden = prog == null; if (prog != null) el.style.insetInlineStart = (prog * 100) + "%"; }
