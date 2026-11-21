@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "58";
+var VERSION = "59";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1243,18 +1243,22 @@ msPush();
           '<p>المشتريات التي تكفي أكثر من يوم يُحسب منها نصيب كل يوم فقط.</p>';
       } else h = none;
     } else if (kind === "mon"){
-      t = "تفاصيل حد الشهر";
+      t = "تفاصيل المتاح هذا الشهر";
       if (s){
         var rs = s.res || [], held = rs.reduce(function(a, r){ return a + (Number(r.per) || 0); }, 0) + (Number(s.rmv) || 0), H2 = function(x){ return '<h2 style="margin-top:16px;font-size:1.05rem">' + x + '</h2>'; };
-        /* بنود المبلغ المحجوز: كم خُصم لكل حجز هذا الشهر، وكم تجمّع له */
-        h = (rs.length ? H2("المحجوز من دخل الشهر").replace("margin-top:16px;", "") + '<ul>' + li("الدخل قبل الحجز", "", n2(s.income + held) + " ريال") + rs.map(function(r){
+        var cs = (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }), paid = s.spent - (Number(s.swept) || 0), restSum = cs.reduce(function(a, c){ return a + (c.l - c.s); }, 0), free = s.left - restSum;
+        /* أولاً: المدفوع فعلياً، ثم توزيع الباقي على البنود ومبلغ كل بند */
+        h = '<ul>' + li("المدفوع فعلياً هذا الشهر", "ما خرج من الجيب منذ بداية الشهر", n2(paid) + " ريال", "sum") +
+          (s.swept > 0 ? li("فائض الأيام المحوَّل", "إلى «" + s.sweepN + "» ويُحسب كأنه صُرف", n2(s.swept) + " ريال") : "") + '</ul>' +
+          H2("الباقي موزّع على البنود") + '<ul>' + cs.map(function(c){ var r = c.l - c.s, over = r < -0.005; return li(c.n, "الحد " + n2(c.l) + " · صُرف " + n2(c.s), (over ? "تجاوز " : "") + n2(Math.abs(r)), over ? "bad" : ""); }).join("") +
+          (Math.abs(free) > 0.5 ? li(free > 0 ? "غير موزّع على بند" : "حدود البنود تزيد على المتاح", free > 0 ? "متاح في الشهر خارج حدود البنود" : "مجموع الحدود أكبر من ميزانية الشهر", n2(Math.abs(free)), free > 0 ? "" : "bad") : "") +
+          li(s.left < 0 ? "تجاوز ميزانية الشهر" : "المتاح هذا الشهر", "ميزانية الشهر " + n2(s.income) + " − المصروف " + n2(s.spent), n2(Math.abs(s.left)) + " ريال", s.left < 0 ? "sum bad" : "sum") + '</ul>' +
+          /* بنود المبلغ المحجوز: كم خُصم لكل حجز هذا الشهر، وكم تجمّع له */
+          (rs.length ? H2("المحجوز من دخل الشهر") + '<ul>' + li("الدخل قبل الحجز", "", n2(s.income + held) + " ريال") + rs.map(function(r){
             var du = r.due ? " · يحل " + dm(r.due) : "", sub = r.per > 0 || r.saved > 0 ? "المتجمع " + n2(r.saved) + (r.e === 1 ? "" : " من " + n2(r.a)) + du + (r.sw && s.swept > 0 ? " · منه فائض الأيام " + n2(s.swept) : "") + (r.pre > 0 ? " · منه " + n2(r.pre) + " مدّخر خارج البرنامج" : "") : "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + du;
             return li(r.n, sub, r.per > 0 ? "− " + n2(r.per) : "—"); }).join("") +
             (s.rmv > 0 ? li("محوَّل من باقي البنود", "تحويلات هذا الشهر إلى المحجوز", "− " + n2(s.rmv)) : "") +
-            li("مجموع المحجوز هذا الشهر", "", n2(held) + " ريال", "sum") + li("ميزانية الشهر", "الدخل − المحجوز" + (s.from ? " · تُحسب من " + dm(s.from) : ""), n2(s.income) + " ريال", "sum") + '</ul>' + H2("المصروف حسب البنود") : "") +
-          '<ul>' + (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }).map(function(c){ var over = c.s - c.l > 0.005; return li(c.n, "الحد " + n2(c.l) + (over ? " · تجاوز " + n2(c.s - c.l) : " · الباقي " + n2(c.l - c.s)), n2(c.s), over ? "bad" : ""); }).join("") +
-          (s.swept > 0 ? li("فائض الأيام المحوَّل", "إلى «" + s.sweepN + "» ويُحسب كأنه صُرف", n2(s.swept)) : "") + li("مجموع المصروف", "", n2(s.spent) + " ريال", "sum") +
-          (rs.length ? "" : li("ميزانية الشهر", s.from ? "تُحسب من " + dm(s.from) : "", n2(s.income) + " ريال", "sum")) + li(s.left < 0 ? "تجاوز" : "الباقي", rs.length ? "ميزانية الشهر − المصروف" : "", n2(Math.abs(s.left)) + " ريال", s.left < 0 ? "sum bad" : "sum") + '</ul>';
+            li("مجموع المحجوز هذا الشهر", "", n2(held) + " ريال", "sum") + li("ميزانية الشهر", "الدخل − المحجوز" + (s.from ? " · تُحسب من " + dm(s.from) : ""), n2(s.income) + " ريال", "sum") + '</ul>' : "");
       } else h = none;
     } else if (kind === "stock"){
       t = "مدة كفاية المشتريات";
@@ -1295,6 +1299,8 @@ msPush();
     } else return;
     el("home-det-h").textContent = t; el("home-det-b").innerHTML = h;
     try { detDlg.showModal(); } catch(e){ detDlg.setAttribute("open", ""); }
+    /* التركيز التلقائي على زر الإغلاق ينزل بالنافذة إلى آخرها: نعيدها إلى أولها */
+    detDlg.scrollTop = 0; try { el("home-det-b").scrollTop = 0; } catch(e){}
   }
   home.addEventListener("click", function(ev){ var b = ev.target.closest("[data-det]"); if (b) showDet(b.dataset.det); });
   home.addEventListener("keydown", function(ev){ if (ev.key !== "Enter" && ev.key !== " ") return; var b = ev.target.closest("[data-det]"); if (b && ev.target === b){ ev.preventDefault(); showDet(b.dataset.det); } });
