@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "53";
+var VERSION = "54";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1248,7 +1248,7 @@ msPush();
         var rs = s.res || [], held = rs.reduce(function(a, r){ return a + (Number(r.per) || 0); }, 0), H2 = function(x){ return '<h2 style="margin-top:16px;font-size:1.05rem">' + x + '</h2>'; };
         /* بنود المبلغ المحجوز: كم خُصم لكل حجز هذا الشهر، وكم تجمّع له */
         h = (rs.length ? H2("المحجوز من دخل الشهر").replace("margin-top:16px;", "") + '<ul>' + li("الدخل قبل الحجز", "", n2(s.income + held) + " ريال") + rs.map(function(r){
-            var du = r.due ? " · يحل " + dm(r.due) : "", sub = r.per > 0 || r.saved > 0 ? "المتجمع " + n2(r.saved) + (r.e === 1 ? "" : " من " + n2(r.a)) + du + (r.sw && s.swept > 0 ? " · منه فائض الأيام " + n2(s.swept) : "") : "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + du;
+            var du = r.due ? " · يحل " + dm(r.due) : "", sub = r.per > 0 || r.saved > 0 ? "المتجمع " + n2(r.saved) + (r.e === 1 ? "" : " من " + n2(r.a)) + du + (r.sw && s.swept > 0 ? " · منه فائض الأيام " + n2(s.swept) : "") + (r.pre > 0 ? " · منه " + n2(r.pre) + " مدّخر خارج البرنامج" : "") : "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + du;
             return li(r.n, sub, r.per > 0 ? "− " + n2(r.per) : "—"); }).join("") +
             li("مجموع المحجوز هذا الشهر", "", n2(held) + " ريال", "sum") + li("ميزانية الشهر", "الدخل − المحجوز" + (s.from ? " · تُحسب من " + dm(s.from) : ""), n2(s.income) + " ريال", "sum") + '</ul>' + H2("المصروف حسب البنود") : "") +
           '<ul>' + (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }).map(function(c){ var over = c.s - c.l > 0.005; return li(c.n, "الحد " + n2(c.l) + (over ? " · تجاوز " + n2(c.s - c.l) : " · الباقي " + n2(c.l - c.s)), n2(c.s), over ? "bad" : ""); }).join("") +
@@ -1465,7 +1465,7 @@ msPush();
     /* المحجوز: قسط الإيجار وسداد الديون وما شابههما */
     var rs = s.res || [];
     if (rs.length) h += '<button type="button" class="card g2" data-res="1"><div class="hd"><b>المحجوز</b><span class="lnk">إدارة</span></div>' + rs.map(function(r){
-      var sub = r.e === 1 ? n0(r.a) + " شهرياً" + (r.sw ? " + فائض الأيام" : "") : "من " + n0(r.a) + " · يحل " + S.dm(r.due);
+      var sub = r.e === 1 ? n0(r.a) + " شهرياً" + (r.sw ? " + فائض الأيام" : "") : "من " + n0(r.a) + " · يحل " + S.dm(r.due) + (r.pre > 0 ? " · منه " + n0(r.pre) + " خارج البرنامج" : "");
       if (!(r.per > 0) && !(r.saved > 0)) sub = "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + (r.due ? " · يحل " + S.dm(r.due) : r.sw ? " · فائض الأيام من الآن" : "");
       return '<div class="row"><span class="t"><b>' + esc(r.n) + '</b><small>' + esc(sub) + '</small></span>' + (r.now && r.e !== 1 ? '<span class="pill w">حلّ موعده</span>' : '') + '<span class="v">' + n0(r.saved) + '</span></div>'; }).join("") + '</button>';
     var st = s.stock || [], miss = st.filter(function(x){ return x.left <= 0; }).length, fuel = st.find(function(x){ return x.car && x.n === "بنزين"; });
