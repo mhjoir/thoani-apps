@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "57";
+var VERSION = "58";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1381,7 +1381,7 @@ msPush();
     "#v2 .card{background:var(--s);border:1px solid var(--l);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px}" +
     "#v2 button.card{font:inherit;color:inherit;text-align:start;cursor:pointer;width:100%}" +
     "#v2 .big{display:flex;align-items:baseline;gap:8px}#v2 .big b{font-size:64px;font-weight:700;line-height:1.05;color:var(--a);font-variant-numeric:tabular-nums}#v2 .big.over b{color:var(--w)}#v2 .big span{font-size:18px;color:var(--m)}" +
-    "#v2 .pb{height:10px;border-radius:5px;background:var(--l);overflow:hidden}#v2 .pb i{display:block;height:100%;border-radius:5px;background:var(--a)}#v2 .pb.over i{background:var(--w)}" +
+    "#v2 .pb{height:10px;border-radius:5px;background:var(--l);overflow:hidden}#v2 .pb i{display:block;height:100%;border-radius:5px;background:var(--a)}#v2 .pb.over i{background:var(--w)}#v2 .pb.sec{margin-top:14px}" +
     "#v2 .two{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--m)}#v2 .two b{color:var(--i);font-variant-numeric:tabular-nums}#v2 .lnk{color:var(--a);font-weight:600}" +
     "#v2 .al{display:flex;align-items:center;gap:12px;border-radius:16px;padding:14px 16px;font:inherit;text-align:start;cursor:pointer;width:100%;background:var(--s);border:1px solid var(--l);color:var(--i)}" +
     "#v2 .al.w{background:var(--wb);border-color:var(--wl);color:var(--w);font-weight:600}#v2 .al>span{flex:1;min-width:0}#v2 .al>span.ic{flex:none;display:flex}#v2 .al svg{flex:none}#v2 .al .ic{color:var(--a)}" +
@@ -1459,8 +1459,11 @@ msPush();
     var s = sum(), h = '<div><h1>دفتر المصروف</h1><p class="sub">' + esc(dayName(todayS()) === "اليوم" ? new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {weekday:"long", day:"numeric", month:"long"}).format(new Date()) : "") + '</p></div>';
     if (!s){ return h + '<div class="card"><span class="sub">المتاح اليوم</span><div class="big"><b>—</b><span>ريال</span></div><p class="sub">جارٍ تحميل البيانات…</p></div>'; }
     var L = Number(s.dayLimit) || 0, sp = Number(s.daySpent) || 0, left = L - sp, pc = L > 0 ? Math.min(100, sp / L * 100) : (sp > 0 ? 100 : 0), over = left < -0.005;
+    var pd = Number(s.dayPaid) || 0, ppc = L > 0 ? Math.min(100, pd / L * 100) : (pd > 0 ? 100 : 0), pov = L - pd < -0.005;
     h += '<button type="button" class="card" data-det="day"><span class="sub">' + (over ? "تجاوزت حد اليوم بـ" : "المتاح اليوم") + '</span><div class="big' + (over ? " over" : "") + '"><b>' + n0(Math.abs(left)) + '</b><span>ريال</span></div>' +
-      '<div class="pb' + (over ? " over" : "") + '"><i data-w="' + pc + '"></i></div><div class="two"><span>صرفت <b>' + n0(sp) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div></button>';
+      '<div class="pb' + (over ? " over" : "") + '"><i data-w="' + pc + '"></i></div><div class="two"><span>المحسوب على اليوم <b>' + n0(sp) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div>' +
+      /* خط مستقل للمدفوع فعلياً اليوم: ما خرج من الجيب بتاريخ اليوم، قبل توزيعه على الأيام */
+      '<div class="pb sec' + (pov ? " over" : "") + '"><i data-w="' + ppc + '"></i></div><div class="two"><span>المدفوع فعلياً <b>' + n0(pd) + '</b> من ' + n0(L) + '</span><span>' + (pov ? "تجاوز " : "المتبقي ") + '<b>' + n0(Math.abs(L - pd)) + '</b></span></div></button>';
     var inc = Number(s.income) || 0, ms = Number(s.spent) || 0, ml = inc - ms, mp = inc > 0 ? Math.min(100, ms / inc * 100) : 0, mo = ml < -0.005;
     h += '<button type="button" class="card" data-det="mon"><div class="hd"><span class="sub">' + (mo ? "تجاوزت ميزانية الشهر بـ" : "المتاح هذا الشهر") + '</span><span class="sub">باقي ' + days(s.daysLeft) + '</span></div><div class="big' + (mo ? " over" : "") + '"><b>' + n0(Math.abs(ml)) + '</b><span>ريال</span></div>' +
       '<div class="pb' + (mo ? " over" : "") + '"><i data-w="' + mp + '"></i></div><div class="two"><span>صرفت <b>' + n0(ms) + '</b> من ' + n0(inc) + '</span><span class="lnk">التفاصيل</span></div></button>';
