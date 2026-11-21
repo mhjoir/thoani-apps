@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "54";
+var VERSION = "55";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1245,11 +1245,12 @@ msPush();
     } else if (kind === "mon"){
       t = "تفاصيل حد الشهر";
       if (s){
-        var rs = s.res || [], held = rs.reduce(function(a, r){ return a + (Number(r.per) || 0); }, 0), H2 = function(x){ return '<h2 style="margin-top:16px;font-size:1.05rem">' + x + '</h2>'; };
+        var rs = s.res || [], held = rs.reduce(function(a, r){ return a + (Number(r.per) || 0); }, 0) + (Number(s.rmv) || 0), H2 = function(x){ return '<h2 style="margin-top:16px;font-size:1.05rem">' + x + '</h2>'; };
         /* بنود المبلغ المحجوز: كم خُصم لكل حجز هذا الشهر، وكم تجمّع له */
         h = (rs.length ? H2("المحجوز من دخل الشهر").replace("margin-top:16px;", "") + '<ul>' + li("الدخل قبل الحجز", "", n2(s.income + held) + " ريال") + rs.map(function(r){
             var du = r.due ? " · يحل " + dm(r.due) : "", sub = r.per > 0 || r.saved > 0 ? "المتجمع " + n2(r.saved) + (r.e === 1 ? "" : " من " + n2(r.a)) + du + (r.sw && s.swept > 0 ? " · منه فائض الأيام " + n2(s.swept) : "") + (r.pre > 0 ? " · منه " + n2(r.pre) + " مدّخر خارج البرنامج" : "") : "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + du;
             return li(r.n, sub, r.per > 0 ? "− " + n2(r.per) : "—"); }).join("") +
+            (s.rmv > 0 ? li("محوَّل من باقي البنود", "تحويلات هذا الشهر إلى المحجوز", "− " + n2(s.rmv)) : "") +
             li("مجموع المحجوز هذا الشهر", "", n2(held) + " ريال", "sum") + li("ميزانية الشهر", "الدخل − المحجوز" + (s.from ? " · تُحسب من " + dm(s.from) : ""), n2(s.income) + " ريال", "sum") + '</ul>' + H2("المصروف حسب البنود") : "") +
           '<ul>' + (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }).map(function(c){ var over = c.s - c.l > 0.005; return li(c.n, "الحد " + n2(c.l) + (over ? " · تجاوز " + n2(c.s - c.l) : " · الباقي " + n2(c.l - c.s)), n2(c.s), over ? "bad" : ""); }).join("") +
           (s.swept > 0 ? li("فائض الأيام المحوَّل", "إلى «" + s.sweepN + "» ويُحسب كأنه صُرف", n2(s.swept)) : "") + li("مجموع المصروف", "", n2(s.spent) + " ريال", "sum") +

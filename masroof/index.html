@@ -158,6 +158,7 @@ body.has-tabs main{padding-bottom:96px}
     <p class="note" id="adj-note" hidden style="margin-top:12px"></p>
     <div class="cats" id="cats"></div>
     <div class="settle" id="settle" hidden></div>
+    <button type="button" class="btn sm" id="tr-open" style="margin-top:12px">تحويل باقي بند إلى بند آخر أو إلى المحجوز</button>
     <p class="legend" id="legend" hidden><i></i> الخط الرأسي: أين وصل الشهر. إن تجاوزه الشريط فالصرف أسرع من الأيام.</p>
   </section>
 
@@ -271,6 +272,18 @@ body.has-tabs main{padding-bottom:96px}
   </div>
 </dialog>
 
+<dialog id="tr-dlg" aria-labelledby="tr-h">
+  <form class="form" id="tr-form">
+    <h2 id="tr-h">تحويل باقي بند</h2>
+    <div class="f"><label for="tr-from">من بند</label><select id="tr-from"></select></div>
+    <div class="f"><label for="tr-amt">المبلغ (ريال)</label><input type="text" inputmode="decimal" id="tr-amt" autocomplete="off"></div>
+    <div class="f"><label for="tr-to">إلى</label><select id="tr-to"></select></div>
+    <p class="hint" id="tr-info" style="margin:0;color:var(--muted);font-size:.9rem"></p>
+    <p class="msg warn" id="tr-warn" hidden></p>
+    <div class="row"><button type="submit" class="btn primary">تحويل</button><button type="button" class="btn" id="tr-cancel">إلغاء</button></div>
+  </form>
+</dialog>
+
 <dialog id="res-dlg" aria-labelledby="r-h">
   <form class="form" id="res-form">
     <h2 id="r-h">حجز مبلغ لقسط دوري</h2>
@@ -304,7 +317,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 33;
+  var VERSION = 34;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -467,8 +480,8 @@ body.has-tabs main{padding-bottom:96px}
     if (v.resInit) out.resInit = Math.max(1, Math.min(6, Math.round(Number(v.resInit)) || 1));
     /* تسويات التجاوز: نقل من بند إلى بند، أو مبلغ خارجي غير الراتب */
     if (Array.isArray(v.adjs)){
-      out.adjs = v.adjs.filter(function(a){ return a && a.id && /^\d{4}-\d{2}$/.test(String(a.m)) && (a.t === "move" || a.t === "extra") && a.to && Number(a.amount) > 0; })
-        .map(function(a){ var o = {id:String(a.id), m:String(a.m), t:a.t, to:String(a.to), amount:Number(a.amount)}; if (a.t === "move") o.from = String(a.from || ""); if (a.note) o.note = String(a.note).slice(0, 80); return o; });
+      out.adjs = v.adjs.filter(function(a){ return a && a.id && /^\d{4}-\d{2}$/.test(String(a.m)) && (a.t === "move" || a.t === "extra" || a.t === "res" || a.t === "free") && a.to && Number(a.amount) > 0; })
+        .map(function(a){ var o = {id:String(a.id), m:String(a.m), t:a.t, to:String(a.to), amount:Number(a.amount)}; if (a.t !== "extra") o.from = String(a.from || ""); if (a.note) o.note = String(a.note).slice(0, 80); return o; });
     }
     return out;
   }
@@ -667,7 +680,9 @@ body.has-tabs main{padding-bottom:96px}
     return ks.length ? ks[0] : today().slice(0,7);
   }
   function spentIn(m, id){ var F = eff(m).from; return expenses.concat(fuelRows).reduce(function(a, e){ return a + (e.cat === id && e.date.slice(0,7) === m && (!F || e.date >= F) ? e.amount : 0); }, 0); }
-  function adjNet(m, id){ return adjs(m).reduce(function(a, x){ return a + (x.to === id ? x.amount : 0) - (x.t === "move" && x.from === id ? x.amount : 0); }, 0); }
+  /* move: من بند إلى بند. res: من بند إلى مبلغ محجوز. free: إنقاص حد البند فقط. extra: مبلغ خارجي إلى بند */
+  function adjNet(m, id){ return adjs(m).reduce(function(a, x){ return a + ((x.t === "move" || x.t === "extra") && x.to === id ? x.amount : 0) - (x.t !== "extra" && x.from === id ? x.amount : 0); }, 0); }
+  function resMoved(m, rid){ return adjs(m).reduce(function(a, x){ return a + (x.t === "res" && (rid == null ? ((cfg && cfg.res) || []).some(function(r){ return r.id === x.to; }) : x.to === rid) ? x.amount : 0); }, 0); }
   function carryIn(m, c){
     if (m <= firstMonth()) return 0;
     var p = shift(m, -1), d = spentIn(p, c.id) - limitOf(p, c);
@@ -686,7 +701,7 @@ body.has-tabs main{padding-bottom:96px}
     var s = resShare(r, m); if (r.dd){ var dm = r.dd.slice(0,7); if (m < dm) return 0; if (m === dm){ var n = daysIn(m); s = s * (n - Number(r.dd.slice(8)) + 1) / n; } }
     return s;
   }
-  function reserveOf(m){ return ((cfg && cfg.res) || []).reduce(function(a, r){ return a + resDed(r, m); }, 0); }
+  function reserveOf(m){ return ((cfg && cfg.res) || []).reduce(function(a, r){ return a + resDed(r, m); }, 0) + resMoved(m, null); }
   /* نصيب كل يوم من أيام الشهر من المصروفات بعد توزيعها على أيام كفايتها */
   function dayUse(m){
     var F = eff(m).from, last = daysIn(m), endM = m + "-" + pad(last), u = []; for (var k = 0; k < last; k++) u.push(0);
@@ -710,11 +725,11 @@ body.has-tabs main{padding-bottom:96px}
   function sweepOf(m){ return sweepDays(m).reduce(function(a, x){ return a + x.a; }, 0); }
   /* ما يُضاف إلى رصيد الحجز عن الشهر. القسط الدوري: حصص ما قبل بداية الخصم تُعتبر مدّخرة خارج البرنامج، وشهر الاستحقاق الذي تبدأ منه الدورة يُحسب منه ما بعد يوم الاستحقاق فقط (15 سبتمبر ← نصف شهر). الحجز الشهري: ما خُصم فعلاً فقط */
   function resAcc(r, ym){
-    if (r.every === 1) return resDed(r, ym);
+    if (r.every === 1) return resDed(r, ym) + resMoved(ym, r.id);
     var s = resShare(r, ym); if (r.ded && ym === r.start && resDue(r, ymIdx(ym))) s = s * (1 - Math.min(r.day, 30) / 30);
-    return s;
+    return s + resMoved(ym, r.id);
   }
-  function resPre(r){ var t = 0; if (r.ded && !(r.paid || []).length) for (var q = ymIdx(r.start); q < ymIdx(r.ded); q++) t += resAcc(r, idxYm(q)); return t; }
+  function resPre(r){ var t = 0; if (r.ded && !(r.paid || []).length) for (var q = ymIdx(r.start); q < ymIdx(r.ded); q++) t += resAcc(r, idxYm(q)) - resMoved(idxYm(q), r.id); return t; }
   function resSaved(r, ym){ var t = 0, e = ymIdx(ym); for (var i = ymIdx(r.start); i <= e; i++) t += resAcc(r, idxYm(i));
     if (r.sweep) for (var k = ymIdx(r.sweep.slice(0,7)); k <= e; k++) t += sweepOf(idxYm(k)); (r.paid || []).forEach(function(p){ if (p.d.slice(0,7) <= ym) t -= p.a; }); return t; }
   function resInfo(r, ym){ var i = ymIdx(ym), nd = resNext(r, i), p = i, late = false; while (!resDue(r, p)) p--;
@@ -780,7 +795,8 @@ body.has-tabs main{padding-bottom:96px}
     $("adj-card").hidden = !al.length;
     stock(); summary();
     $("adj-log").innerHTML = al.map(function(a){
-      return '<li><span class="what"><b>' + (a.t === "move" ? "نقل من «" + esc(nameOf(a.from)) + "» إلى «" + esc(nameOf(a.to)) + "»" : "مبلغ خارجي إلى «" + esc(nameOf(a.to)) + "»") + '</b><span>' + (a.note ? esc(a.note) : (a.t === "move" ? "خصم من بند آخر" : "غير الراتب")) + '</span></span><span class="amt">' + fmt(a.amount) + '</span><button type="button" class="btn sm danger" data-adj="' + esc(a.id) + '">حذف</button></li>';
+      var rN = function(id){ var r = ((cfg && cfg.res) || []).find(function(x){ return x.id === id; }); return r ? r.n : "حجز محذوف"; };
+      return '<li><span class="what"><b>' + (a.t === "move" ? "نقل من «" + esc(nameOf(a.from)) + "» إلى «" + esc(nameOf(a.to)) + "»" : a.t === "res" ? "تحويل من «" + esc(nameOf(a.from)) + "» إلى المحجوز «" + esc(rN(a.to)) + "»" : a.t === "free" ? "تصفير باقي «" + esc(nameOf(a.from)) + "»" : "مبلغ خارجي إلى «" + esc(nameOf(a.to)) + "»") + '</b><span>' + (a.note ? esc(a.note) : (a.t === "move" ? "خصم من بند آخر" : a.t === "res" ? "خرج من ميزانية الشهر إلى المحجوز" : a.t === "free" ? "أُنقص حد البند وبقي المبلغ في المتاح العام" : "غير الراتب")) + '</span></span><span class="amt">' + fmt(a.amount) + '</span><button type="button" class="btn sm danger" data-adj="' + esc(a.id) + '">حذف</button></li>';
     }).join("");
 
     var rows = monthRows().slice().sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : (a.at < b.at ? 1 : -1); });
@@ -819,7 +835,7 @@ body.has-tabs main{padding-bottom:96px}
         }
       });
       var dl = Math.max(0, (inc - before - swp) / daysLeft);
-      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, swept:Math.round(swp * 100) / 100, sweepN:swr ? swr.n : "", dayRows:dayRows, week:wk.slice(0, Math.min(7, daysLeft)).map(function(x){ return Math.round(x * 100) / 100; }), stock:stockRows, res:((cfg && cfg.res) || []).map(function(r){ var x = resInfo(r, m); return {n:r.n, a:r.amount, per:Math.round(x.per * 100) / 100, saved:Math.round(Math.max(0, x.saved) * 100) / 100, due:x.due, st:r.start, e:r.every, pre:Math.round(resPre(r) * 100) / 100, sw:r.sweep ? 1 : 0, now:x.now ? 1 : 0}; }), ver:VERSION,
+      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, rmv:Math.round(resMoved(m, null) * 100) / 100, swept:Math.round(swp * 100) / 100, sweepN:swr ? swr.n : "", dayRows:dayRows, week:wk.slice(0, Math.min(7, daysLeft)).map(function(x){ return Math.round(x * 100) / 100; }), stock:stockRows, res:((cfg && cfg.res) || []).map(function(r){ var x = resInfo(r, m); return {n:r.n, a:r.amount, per:Math.round(x.per * 100) / 100, saved:Math.round(Math.max(0, x.saved) * 100) / 100, due:x.due, st:r.start, e:r.every, pre:Math.round(resPre(r) * 100) / 100, sw:r.sweep ? 1 : 0, now:x.now ? 1 : 0}; }), ver:VERSION,
         rows:expenses.concat(fuelRows).filter(function(e){ return e.date.slice(0,7) === m && (!E.from || e.date >= E.from); }).sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : String(b.at || "") < String(a.at || "") ? -1 : 1; }).map(function(e){
           var c2 = cfg.cats.find(function(x){ return x.id === e.cat; }), i2 = e.item ? itemOf(e.item) : null;
           return {id:e.id, n:e.ext ? (e.lbl || "السيارة") : i2 ? i2.n + (e.qty ? " " + qtyFmt(e.qty) + " " + (e.unit || i2.u) : "") : (e.note || (c2 ? c2.name : "مصروف")), c:c2 ? c2.name : "", a:e.amount, d:e.date, k:e.days > 1 ? Math.round(e.days) : 1, x:e.ext ? 1 : 0}; }).concat(resPays(m).map(function(p){ return {id:p.id, n:p.n, c:"سداد من المحجوز", a:p.a, d:p.d, k:1, x:0, r:1}; })).sort(function(a, b){ return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; }),
@@ -1003,6 +1019,40 @@ body.has-tabs main{padding-bottom:96px}
     if (!(n >= 1)){ w.hidden = false; w.textContent = "اكتب عدد الأيام (يوم واحد على الأقل)."; return; }
     var h = Object.assign({}, cfg.have || {}); h[haveId] = {date:today(), days:Math.min(n, 366)};
     try { await saveCfg(cleanCfg(Object.assign({}, cfg, {have:h}))); $("have-dlg").close(); render(); }
+    catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+  });
+
+  /* ---------- تحويل باقي بند ---------- */
+  function trRest(c){ return Math.round((limitOf(month, c) - spentIn(month, c.id)) * 100) / 100; }
+  function trDraw(){
+    var f = $("tr-from").value, to = $("tr-to"), keep = to.value;
+    to.innerHTML = '<optgroup label="بند آخر">' + cfg.cats.filter(function(c){ return c.id !== f; }).map(function(c){ return '<option value="c:' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join("") + '</optgroup>' +
+      ((cfg.res || []).length ? '<optgroup label="المبلغ المحجوز">' + cfg.res.map(function(r){ return '<option value="r:' + esc(r.id) + '">' + esc(r.n) + '</option>'; }).join("") + '</optgroup>' : '') +
+      '<optgroup label="بلا وجهة"><option value="free">تصفير الباقي في البند فقط</option></optgroup>';
+    if (keep && to.querySelector('option[value="' + keep + '"]')) to.value = keep;
+    trInfo();
+  }
+  function trInfo(){ var v = $("tr-to").value;
+    $("tr-info").textContent = v.indexOf("c:") === 0 ? "ينتقل المبلغ من حد هذا البند إلى حد البند الآخر في هذا الشهر. المتاح للشهر والحد اليومي لا يتغيران." :
+      v.indexOf("r:") === 0 ? "يُضاف المبلغ إلى المحجوز ويخرج من ميزانية هذا الشهر، فينخفض المتاح للشهر والحد اليومي بقدره." :
+      "يُنقص حد البند فقط، ويبقى المبلغ ضمن المتاح العام للشهر. الحد اليومي يحسب أصلاً كل المتاح في الشهر، فلا يتغير."; }
+  $("tr-open").addEventListener("click", function(){
+    if (!cfg) return;
+    var src = cfg.cats.map(function(c){ return {c:c, r:trRest(c)}; }).filter(function(x){ return x.r > 0.005; });
+    $("tr-from").innerHTML = src.map(function(x){ return '<option value="' + esc(x.c.id) + '" data-rest="' + x.r + '">' + esc(x.c.name) + ' — الباقي ' + fmt(x.r) + '</option>'; }).join("");
+    $("tr-warn").hidden = !!src.length; if (!src.length) $("tr-warn").textContent = "لا يوجد بند فيه رصيد متبقٍّ هذا الشهر.";
+    var o = $("tr-from").selectedOptions[0]; $("tr-amt").value = o ? String(Number(o.dataset.rest)) : ""; $("tr-to").innerHTML = ""; if (o) trDraw(); open($("tr-dlg"));
+  });
+  $("tr-from").addEventListener("change", function(){ var o = $("tr-from").selectedOptions[0]; $("tr-amt").value = o ? String(Number(o.dataset.rest)) : ""; trDraw(); });
+  $("tr-to").addEventListener("change", trInfo);
+  $("tr-cancel").addEventListener("click", function(){ $("tr-dlg").close(); });
+  $("tr-form").addEventListener("submit", async function(ev){
+    ev.preventDefault(); var w = $("tr-warn"), o = $("tr-from").selectedOptions[0], v = $("tr-to").value, amt = Math.round(num($("tr-amt").value) * 100) / 100;
+    if (!o || !v){ w.hidden = false; w.textContent = "لا يوجد بند فيه رصيد متبقٍّ هذا الشهر."; return; }
+    if (!(amt > 0)){ w.hidden = false; w.textContent = "اكتب المبلغ بالريال."; return; }
+    if (amt > Number(o.dataset.rest) + 0.005){ w.hidden = false; w.textContent = "المبلغ أكبر من الباقي في البند (" + fmt(Number(o.dataset.rest)) + " ريال)."; return; }
+    var a = {id:newId(), m:month, from:o.value, amount:amt, t:v === "free" ? "free" : v.indexOf("r:") === 0 ? "res" : "move", to:v === "free" ? "-" : v.slice(2)};
+    try { await saveCfg(cleanCfg(Object.assign({}, cfg, {adjs:(cfg.adjs || []).concat([a])}))); $("tr-dlg").close(); render(); }
     catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
   });
 
