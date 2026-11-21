@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "35";
+var VERSION = "36";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -976,17 +976,17 @@ msPush();
     "#home-stats .st .v.neg{color:var(--warn)}" +
     "#home-stats .st .u{color:var(--muted);font-size:.78rem}" +
     "#home-month{font-weight:600}" +
-    "#home-day{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}" +
-    "#home-day .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}" +
-    "#home-day .k{color:var(--muted);font-size:.85rem}" +
-    "#home-day .lim{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}" +
-    "#home-day .track{height:14px;border-radius:999px;background:var(--line);overflow:hidden}" +
-    "#home-day .fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .3s}" +
-    "#home-day.over .fill{background:var(--warn)}" +
-    "#home-day .ends{display:flex;justify-content:space-between;gap:10px;font-size:.92rem;font-variant-numeric:tabular-nums}" +
-    "#home-day .ends b{color:var(--ink)}" +
-    "#home-day.over #hd-left b{color:var(--warn)}" +
-    "#home-day .u{color:var(--muted);font-size:.78rem}" +
+    ".hbar{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}" +
+    ".hbar .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}" +
+    ".hbar .k{color:var(--muted);font-size:.85rem}" +
+    ".hbar .lim{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}" +
+    ".hbar .track{height:14px;border-radius:999px;background:var(--line);overflow:hidden}" +
+    ".hbar .fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .3s}" +
+    ".hbar.over .fill{background:var(--warn)}" +
+    ".hbar .ends{display:flex;justify-content:space-between;gap:10px;font-size:.92rem;font-variant-numeric:tabular-nums}" +
+    ".hbar .ends b{color:var(--ink)}" +
+    ".hbar.over .left b{color:var(--warn)}" +
+    ".hbar .u{color:var(--muted);font-size:.78rem}" +
     "#app-home .adds{display:grid;grid-template-columns:1fr 1fr;gap:10px}" +
     "#app-home .adds button{background:var(--accent);border-color:var(--accent);padding:16px 12px;align-items:center;text-align:center}" +
     "#app-home .adds button b{color:var(--accent-ink);font-size:1.05rem}" +
@@ -1014,13 +1014,14 @@ msPush();
   home.innerHTML = '<div class="in"><h2>دفتر المصروف</h2><div class="adds">' +
     '<button type="button" id="home-add-car"><b>إضافة مصروف السيارة</b><span>العداد ثم نوع المصروف</span></button>' +
     '<button type="button" id="home-add-exp"><b>إضافة مصروف المنزل</b><span>اختر نوع المصروف</span></button></div>' +
-    '<div id="home-day"><div class="top"><span class="k">الحد اليومي (المنزل + السيارة)</span><span class="lim" id="hd-lim">—</span></div>' +
+    '<div id="home-day" class="hbar"><div class="top"><span class="k">الحد اليومي (المنزل + السيارة)</span><span class="lim" id="hd-lim">—</span></div>' +
     '<div class="track" id="hd-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="المصروف من الحد اليومي"><div class="fill" id="hd-fill"></div></div>' +
-    '<div class="ends"><span id="hd-spent">المصروف اليوم <b>—</b></span><span id="hd-left">الباقي <b>—</b></span></div><span class="u" id="hd-u"></span></div>' +
+    '<div class="ends"><span id="hd-spent">المصروف اليوم <b>—</b></span><span id="hd-left" class="left">الباقي <b>—</b></span></div><span class="u" id="hd-u"></span></div>' +
+    '<div id="home-mon" class="hbar"><div class="top"><span class="k">حد الشهر (المنزل + السيارة)</span><span class="lim" id="hm-lim">—</span></div>' +
+    '<div class="track" id="hm-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="المصروف من حد الشهر"><div class="fill" id="hm-fill"></div></div>' +
+    '<div class="ends"><span id="hm-spent">مصروف الشهر <b>—</b></span><span id="hm-left" class="left">الباقي <b>—</b></span></div><span class="u" id="hm-u"></span></div>' +
     '<p id="home-month"></p>' +
     '<div id="home-stats">' +
-    '<div class="st"><span class="k">مصروف الشهر</span><span class="v" id="hs-spent">—</span><span class="u" id="hs-spent-u">ريال</span></div>' +
-    '<div class="st"><span class="k">الباقي</span><span class="v" id="hs-left">—</span><span class="u" id="hs-left-u">ريال</span></div>' +
     '<div class="st"><span class="k">بنزين الشهر</span><span class="v" id="hs-fuel">—</span><span class="u" id="hs-fuel-u">ريال</span></div>' +
     '<div class="st"><span class="k">الممشى خلال الشهر</span><span class="v" id="hs-km">—</span><span class="u" id="hs-km-u">كم</span></div>' +
     '<div class="st wide"><span class="k">الممشى منذ آخر تعبئة بنزين</span><span class="v" id="hs-since">—</span><span class="u" id="hs-since-u">كم</span></div>' +
@@ -1067,19 +1068,27 @@ msPush();
         var L = Number(s.dayLimit), sp = Number(s.daySpent) || 0, lf = L - sp, pc = L > 0 ? Math.min(100, sp / L * 100) : (sp > 0 ? 100 : 0);
         el("hd-lim").textContent = n0(L) + " ريال";
         el("hd-fill").style.width = pc + "%"; el("hd-track").setAttribute("aria-valuenow", String(Math.round(pc)));
-        box.className = lf < -0.005 ? "over" : "";
+        box.className = lf < -0.005 ? "hbar over" : "hbar";
         el("hd-spent").innerHTML = "المصروف اليوم <b>" + n0(sp) + "</b>";
         el("hd-left").innerHTML = lf < -0.005 ? "تجاوز <b>" + n0(-lf) + "</b>" : "الباقي <b>" + n0(lf) + "</b>";
         el("hd-u").textContent = "الباقي من ميزانية الشهر مقسوماً على " + s.daysLeft + (s.daysLeft > 10 ? " يوماً" : s.daysLeft > 2 ? " أيام" : s.daysLeft === 2 ? " يومين" : " يوم") + " باقية";
       } else {
-        el("hd-lim").textContent = "—"; el("hd-fill").style.width = "0"; box.className = "";
+        el("hd-lim").textContent = "—"; el("hd-fill").style.width = "0"; box.className = "hbar";
         el("hd-spent").innerHTML = "المصروف اليوم <b>—</b>"; el("hd-left").innerHTML = "الباقي <b>—</b>"; el("hd-u").textContent = "يظهر بعد تحميل قسم المنزل";
       }
+      var mb = el("home-mon");
       if (s && s.m === ym){
-        el("hs-spent").textContent = n0(s.spent); el("hs-spent-u").textContent = "ريال من " + n0(s.income) + (s.from ? " · منذ " + Number(s.from.slice(8)) + "/" + Number(s.from.slice(5,7)) : "");
-        el("hs-left").textContent = n0(s.left); el("hs-left").className = "v" + (s.left < -0.005 ? " neg" : "");
-        el("hs-left-u").textContent = s.left < -0.005 ? "ريال · تجاوز للميزانية" : "ريال من ميزانية الشهر";
-      } else { el("hs-spent").textContent = "—"; el("hs-left").textContent = "—"; el("hs-left").className = "v"; el("hs-spent-u").textContent = "ريال"; el("hs-left-u").textContent = "يظهر بعد فتح قسم المنزل"; }
+        var ML = Number(s.income) || 0, msp = Number(s.spent) || 0, mlf = ML - msp, mpc = ML > 0 ? Math.min(100, msp / ML * 100) : (msp > 0 ? 100 : 0);
+        el("hm-lim").textContent = n0(ML) + " ريال";
+        el("hm-fill").style.width = mpc + "%"; el("hm-track").setAttribute("aria-valuenow", String(Math.round(mpc)));
+        mb.className = mlf < -0.005 ? "hbar over" : "hbar";
+        el("hm-spent").innerHTML = "مصروف الشهر <b>" + n0(msp) + "</b>";
+        el("hm-left").innerHTML = mlf < -0.005 ? "تجاوز <b>" + n0(-mlf) + "</b>" : "الباقي <b>" + n0(mlf) + "</b>";
+        el("hm-u").textContent = s.from ? "يُحسب من " + Number(s.from.slice(8)) + "/" + Number(s.from.slice(5,7)) + " إلى نهاية الشهر" : "";
+      } else {
+        el("hm-lim").textContent = "—"; el("hm-fill").style.width = "0"; mb.className = "hbar";
+        el("hm-spent").innerHTML = "مصروف الشهر <b>—</b>"; el("hm-left").innerHTML = "الباقي <b>—</b>"; el("hm-u").textContent = "يظهر بعد تحميل قسم المنزل";
+      }
       /* بيانات السيارة تُقرأ من المخزن مباشرة: التعبئات والصيانة وقراءات العداد للسيارة الحالية */
       var fills = [], svcs = [], carIds = [];
       Object.keys(store).forEach(function(k){
