@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "45";
+var VERSION = "46";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1345,6 +1345,7 @@ msPush();
     tool:'<path d="M14.5 6.5a4 4 0 00-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 005.3-5.3L15 12l-3-3z"/>', bag:'<path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 016 0v2"/>',
     coin:'<circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10h4a1.5 1.5 0 010 3h-3a1.5 1.5 0 000 3h4"/>', chev:'<path d="M14 6l-6 6 6 6"/>',
     car:'<path d="M4 16v-3l2-5h12l2 5v3"/><path d="M4 16h16"/><circle cx="8" cy="17" r="1.6"/><circle cx="16" cy="17" r="1.6"/>', sliders:'<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+    gauge:'<path d="M4 17a8 8 0 1116 0"/><path d="M12 17l4-6"/><path d="M12 17h.01"/>',
     cloud:'<path d="M7 18a4 4 0 010-8 5 5 0 019.6-1.2A4.5 4.5 0 0117 18z"/>', alert:'<path d="M12 4l9 15H3z"/><path d="M12 10v4M12 17h.01"/>'};
   try { var fl = document.createElement("link"); fl.rel = "stylesheet"; fl.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"; document.head.appendChild(fl); } catch(e){}
   var css = document.createElement("style");
@@ -1395,7 +1396,7 @@ msPush();
   var add = document.createElement("dialog"); add.id = "v2-add"; add.setAttribute("aria-labelledby", "v2-add-h");
   function opt(k, ic, t, s){ return '<button type="button" class="o" data-add="' + k + '"><span class="sq">' + ico(I[ic], 24) + '</span><span class="t"><b>' + t + '</b><small>' + s + '</small></span>' + ico(I.chev, 18) + '</button>'; }
   add.innerHTML = '<h2 id="v2-add-h">إضافة مصروف</h2><p>اختر نوع المصروف</p><div class="os">' + opt("fuel", "fuel", "بنزين", "العداد ثم مبلغ التعبئة") + opt("svc", "tool", "صيانة السيارة", "العداد ثم نوع الصيانة") +
-    opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
+    opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + opt("odo", "gauge", "تحديث العداد", "قراءة العداد فقط، بلا مصروف") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
   document.body.appendChild(v2); document.body.appendChild(nav); document.body.appendChild(add);
 
   /* الرجوع تلقائياً إلى الشاشة السابقة بعد إغلاق نوافذ التسجيل في القسمين القديمين */
@@ -1484,7 +1485,9 @@ msPush();
   add.addEventListener("click", function(ev){
     if (ev.target.closest("#v2-add-x")){ add.close(); return; }
     var b = ev.target.closest("button[data-add]"); if (!b) return; add.close();
-    var k = b.dataset.add; if (k === "fuel" || k === "svc") addCar(); else if (k === "shop") addHome("food"); else addHome(null);
+    var k = b.dataset.add;
+    if (k === "odo"){ var prev = cur; S.show("car"); try { $("mnt-open").click(); $("odo-open").click(); } catch(e){} back(prev); return; }
+    if (k === "fuel" || k === "svc") addCar(); else if (k === "shop") addHome("food"); else addHome(null);
   });
   v2.addEventListener("click", function(ev){
     var b = ev.target.closest("button"); if (!b) return;
