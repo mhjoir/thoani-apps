@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "64";
+var VERSION = "65";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1147,15 +1147,18 @@ msPush();
       var cur = lsGet("fuel-cur-car"); if (carIds.indexOf(cur) < 0) cur = carIds.sort()[0] || null;
       var car = cur ? store["cars/" + cur] : null, tag = car && carIds.length > 1 ? " · " + ([car.make, car.model].filter(Boolean).join(" ") || "سيارة") : "";
       var mine = function(x){ return x.carId === cur && x.odo != null && isFinite(Number(x.odo)); }, raw = [];
-      fills.filter(mine).forEach(function(f){ raw.push({d:String(f.ts).slice(0,10), o:Number(f.odo)}); });
-      svcs.filter(mine).forEach(function(x){ raw.push({d:String(x.ts).slice(0,10), o:Number(x.odo)}); });
+      fills.filter(mine).forEach(function(f){ raw.push({d:String(f.ts).slice(0,10), o:Number(f.odo), ts:String(f.ts)}); });
+      svcs.filter(mine).forEach(function(x){ raw.push({d:String(x.ts).slice(0,10), o:Number(x.odo), ts:String(x.ts)}); });
       if (car){
-        (car.odoLog || []).forEach(function(q){ raw.push({d:String(q.t).slice(0,10), o:Number(q.o)}); });
-        if (car.odoNow != null && car.odoAt) raw.push({d:String(car.odoAt).slice(0,10), o:Number(car.odoNow)});
+        (car.odoLog || []).forEach(function(q){ raw.push({d:String(q.t).slice(0,10), o:Number(q.o), ts:String(q.t)}); });
+        if (car.odoNow != null && car.odoAt) raw.push({d:String(car.odoAt).slice(0,10), o:Number(car.odoNow), ts:String(car.odoAt)});
       }
       det.hasCar = !!car;
       var byDay = {}; raw.forEach(function(q){ if (/^\d{4}-\d\d-\d\d$/.test(q.d) && (byDay[q.d] == null || q.o > byDay[q.d])) byDay[q.d] = q.o; });
       det.odoToday = byDay[tdy] != null;
+      /* أوقات قراءات اليوم بالدقائق من منتصف الليل (القراءة بلا وقت تُعدّ صباحية) */
+      det.odoMins = raw.map(function(q){ if (q.ts.length <= 10) return q.d === tdy ? 0 : -1; var dt = new Date(q.ts); if (isNaN(dt.getTime())) return q.d === tdy ? 0 : -1;
+        var ld = dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0"); return ld === tdy ? dt.getHours() * 60 + dt.getMinutes() : -1; }).filter(function(x){ return x >= 0; });
       var pts = []; Object.keys(byDay).sort().forEach(function(d){ if (!pts.length || byDay[d] >= pts[pts.length - 1].o) pts.push({d:d, o:byDay[d], t:new Date(d + "T12:00").getTime()}); });
       function odoAt(t){
         if (t <= pts[0].t) return pts[0].o;
@@ -1351,7 +1354,9 @@ msPush();
     stats();
     setTimeout(function(){ if (!frame.getAttribute("src")) frame.setAttribute("src", "../masroof/"); }, 600);
   });
-  window.__shell = {odoDue:function(){ var n = new Date(); return !!det.hasCar && !det.odoToday && n.getHours() * 60 + n.getMinutes() >= 990; }, show:show, stats:stats, showDet:showDet, frame:frame, dm:dm, addCar:function(){ el("home-add-car").click(); }};
+  window.__shell = {/* تنبيهان في اليوم: من 7:00 صباحاً حتى أول قراءة، ومن 4:30 عصراً حتى قراءة تُسجَّل بعد 4:30 */
+    odoDue:function(){ var n = new Date(), t = n.getHours() * 60 + n.getMinutes(), ms = det.odoMins || []; if (!det.hasCar) return false;
+      if (t >= 990) return !ms.some(function(x){ return x >= 990; }); if (t >= 420) return !ms.length; return false; }, show:show, stats:stats, showDet:showDet, frame:frame, dm:dm, addCar:function(){ el("home-add-car").click(); }};
   show("home");
 })();
 
