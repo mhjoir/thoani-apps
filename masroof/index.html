@@ -304,7 +304,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 30;
+  var VERSION = 31;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -387,7 +387,7 @@ body.has-tabs main{padding-bottom:96px}
   function seedRes(){
     if (!cfg) return;
     var now = today().slice(0,7), c = null;
-    if (!cfg.res && !cfg.resInit) c = Object.assign({}, cfg, {resInit:3, res:[
+    if (!cfg.res && !cfg.resInit) c = Object.assign({}, cfg, {resInit:4, res:[
       /* الحجز يبدأ من الشهر الحالي، وحصص الأشهر منذ القسط السابق تُعتبر مدّخرة من قبل */
       {id:"rent", n:"قسط الإيجار", amount:6250, every:6, m0:3, day:15, start:"2026-09", ded:now, dd:today(), paid:[]},
       {id:"debt", n:"سداد الديون", amount:500, every:1, m0:1, day:1, start:now, dd:today(), paid:[], sweep:today()}]});
@@ -399,6 +399,19 @@ body.has-tabs main{padding-bottom:96px}
       if (r.id === "rent" && r.every === 6 && r.m0 === 3) return Object.assign({}, r, {start:"2026-09", ded:now});
       if (r.id === "debt") return Object.assign({}, r, {start:now});
       return r; })});
+    /* حجوزات أُدخلت يدوياً ببداية مؤجلة: تبدأ من 21 نوفمبر كما طلب صاحب التطبيق، وحصص ما قبلها من القسط الدوري تُعتبر مدّخرة */
+    else if (cfg.res && cfg.resInit !== 4){
+      var list = cfg.res;
+      if (now === "2026-11"){
+        list = list.map(function(r){
+          if (r.start <= now) return r;
+          if (r.every === 1) return Object.assign({}, r, {start:now, dd:"2026-11-21"});
+          var pi = ymIdx(now); while (!resDue(r, pi)) pi--;
+          return Object.assign({}, r, {start:idxYm(pi), ded:now, dd:"2026-11-21"}); });
+        if (!list.some(function(r){ return r.sweep; })){ var mi = -1; list.forEach(function(r, i){ if (mi < 0 && r.every === 1) mi = i; }); if (mi >= 0) list = list.map(function(r, i){ return i === mi ? Object.assign({}, r, {sweep:today()}) : r; }); }
+      }
+      c = Object.assign({}, cfg, {resInit:4, res:list});
+    }
     if (c && (c = cleanCfg(c))){ cfg = c; saveLocal(); seedRes(); }
   }
   function saveLocal(){ try { localStorage.setItem(LS, JSON.stringify({cfg:cfg, expenses:expenses})); } catch(e){} }
@@ -443,7 +456,7 @@ body.has-tabs main{padding-bottom:96px}
       var swSeen = false; v.res.forEach(function(r){ var o = r && rs.find(function(x){ return x.id === String(r.id); }); if (o && !swSeen && /^\d{4}-\d\d-\d\d$/.test(String(r.sweep || ""))){ o.sweep = String(r.sweep); swSeen = true; } });
       if (rs.length) out.res = rs;
     }
-    if (v.resInit) out.resInit = Math.max(1, Math.min(3, Math.round(Number(v.resInit)) || 1));
+    if (v.resInit) out.resInit = Math.max(1, Math.min(4, Math.round(Number(v.resInit)) || 1));
     /* تسويات التجاوز: نقل من بند إلى بند، أو مبلغ خارجي غير الراتب */
     if (Array.isArray(v.adjs)){
       out.adjs = v.adjs.filter(function(a){ return a && a.id && /^\d{4}-\d{2}$/.test(String(a.m)) && (a.t === "move" || a.t === "extra") && a.to && Number(a.amount) > 0; })
