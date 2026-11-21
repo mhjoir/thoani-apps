@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "59";
+var VERSION = "60";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -995,6 +995,7 @@ msPush();
     "#app-home [data-det]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}" +
     "#home-det-dlg{border:1px solid var(--line);border-radius:16px;padding:18px;background:var(--surface);color:var(--ink);width:min(94vw,460px);max-height:86vh}" +
     "#home-det-dlg::backdrop{background:rgba(0,0,0,.45)}" +
+    "#home-det-dlg details.pd{margin:4px 0 0;border:1px solid var(--line);border-radius:12px;padding:4px 12px}#home-det-dlg details.pd summary{cursor:pointer;font-weight:600;padding:8px 0;color:var(--accent,inherit)}#home-det-dlg details.pd li:last-child{border-bottom:0}" +
     "#home-det-dlg h2{margin:0 0 10px;font-size:1.2rem}" +
     "#home-det-dlg ul{list-style:none;margin:0;padding:0;display:grid;gap:0}" +
     "#home-det-dlg li{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}" +
@@ -1246,10 +1247,13 @@ msPush();
       t = "تفاصيل المتاح هذا الشهر";
       if (s){
         var rs = s.res || [], held = rs.reduce(function(a, r){ return a + (Number(r.per) || 0); }, 0) + (Number(s.rmv) || 0), H2 = function(x){ return '<h2 style="margin-top:16px;font-size:1.05rem">' + x + '</h2>'; };
-        var cs = (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }), paid = s.spent - (Number(s.swept) || 0), restSum = cs.reduce(function(a, c){ return a + (c.l - c.s); }, 0), free = s.left - restSum;
+        var cs = (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }), paid = s.spent - (Number(s.swept) || 0), restSum = cs.reduce(function(a, c){ return a + (c.l - c.s); }, 0), free = s.left - restSum, pr = (s.rows || []).filter(function(r){ return !r.r; });
         /* أولاً: المدفوع فعلياً، ثم توزيع الباقي على البنود ومبلغ كل بند */
         h = '<ul>' + li("المدفوع فعلياً هذا الشهر", "ما خرج من الجيب منذ بداية الشهر", n2(paid) + " ريال", "sum") +
           (s.swept > 0 ? li("فائض الأيام المحوَّل", "إلى «" + s.sweepN + "» ويُحسب كأنه صُرف", n2(s.swept) + " ريال") : "") + '</ul>' +
+          /* تفاصيل المدفوع فعلياً: كل عملية بتاريخها وبندها ومبلغها */
+          (pr.length ? '<details class="pd"' + (pr.length <= 6 ? " open" : "") + '><summary>تفاصيل المدفوع (' + (pr.length === 1 ? "عملية واحدة" : pr.length === 2 ? "عمليتان" : pr.length + (pr.length > 10 ? " عملية" : " عمليات")) + ')</summary><ul>' +
+            pr.map(function(r){ return li(r.n, dm(r.d) + " · " + (r.x ? "السيارة" : r.c) + (r.f ? " · من أصل " + n2(r.f) : ""), n2(r.a)); }).join("") + li("المجموع", "", n2(pr.reduce(function(a, r){ return a + r.a; }, 0)) + " ريال", "sum") + '</ul></details>' : '<p>لا توجد مدفوعات مسجّلة هذا الشهر.</p>') +
           H2("الباقي موزّع على البنود") + '<ul>' + cs.map(function(c){ var r = c.l - c.s, over = r < -0.005; return li(c.n, "الحد " + n2(c.l) + " · صُرف " + n2(c.s), (over ? "تجاوز " : "") + n2(Math.abs(r)), over ? "bad" : ""); }).join("") +
           (Math.abs(free) > 0.5 ? li(free > 0 ? "غير موزّع على بند" : "حدود البنود تزيد على المتاح", free > 0 ? "متاح في الشهر خارج حدود البنود" : "مجموع الحدود أكبر من ميزانية الشهر", n2(Math.abs(free)), free > 0 ? "" : "bad") : "") +
           li(s.left < 0 ? "تجاوز ميزانية الشهر" : "المتاح هذا الشهر", "ميزانية الشهر " + n2(s.income) + " − المصروف " + n2(s.spent), n2(Math.abs(s.left)) + " ريال", s.left < 0 ? "sum bad" : "sum") + '</ul>' +
