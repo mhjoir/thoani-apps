@@ -264,7 +264,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 15;
+  var VERSION = 16;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -639,11 +639,12 @@ body.has-tabs main{padding-bottom:96px}
       /* الحد اليومي الشامل (المنزل + السيارة): ما بقي من ميزانية الشهر حتى بداية اليوم مقسوماً على الأيام الباقية ومنها اليوم */
       var td = today(), last = new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate(), daysLeft = Math.max(1, last - Number(td.slice(8)) + 1), before = 0, dsp = 0;
       /* مشتريات الكمية (أرز يكفي 20 يوماً مثلاً) تُوزَّع على أيام كفايتها حتى نهاية الشهر، فلا تُحسب كلها على يوم الشراء */
-      var endM = m + "-" + pad(last), dayRows = [];
+      var endM = m + "-" + pad(last), dayRows = [], paid = 0;
       expenses.concat(fuelRows).forEach(function(e){
         if (e.date.slice(0,7) !== m || (E.from && e.date < E.from) || e.date > td) return;
         var span = e.days > 1 ? Math.max(1, Math.min(Math.round(e.days), dayDiff(e.date, endM) + 1)) : 1, share = e.amount / span, gone = Math.min(span, dayDiff(e.date, td));
         before += share * gone;
+        if (e.date === td) paid += e.amount;
         if (gone < span){
           dsp += share;
           var cc = cfg.cats.find(function(x){ return x.id === e.cat; }), ii = e.item ? itemOf(e.item) : null;
@@ -651,7 +652,7 @@ body.has-tabs main{padding-bottom:96px}
         }
       });
       var dl = Math.max(0, (inc - before) / daysLeft);
-      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayRows:dayRows,
+      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, dayRows:dayRows,
         cats:cfg.cats.map(function(c){ return {n:c.name, s:Math.round(spentIn(m, c.id) * 100) / 100, l:Math.round(limitOf(m, c) * 100) / 100}; })});
       if (localStorage.getItem("masroof-summary") !== v) localStorage.setItem("masroof-summary", v);
     } catch(e){}
