@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "43";
+var VERSION = "44";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1004,6 +1004,8 @@ msPush();
     "#home-det-dlg li b{white-space:nowrap;font-variant-numeric:tabular-nums}" +
     "#home-det-dlg li.sum{font-weight:700}" +
     "#home-det-dlg li{align-items:center}" +
+    "#home-det-dlg .bb{display:flex;flex-direction:column;gap:5px;flex:none}" +
+    "#home-det-dlg .buy.alt{background:var(--bg);color:var(--accent)}" +
     "#home-det-dlg .buy{flex:none;font:inherit;font-size:.85rem;font-weight:600;padding:7px 12px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}" +
     "#home-det-dlg li.bad b{color:var(--warn)}" +
     "#home-det-dlg p{margin:10px 0 0;color:var(--muted);font-size:.86rem}" +
@@ -1184,6 +1186,18 @@ msPush();
   el("home-det-x").addEventListener("click", function(){ detDlg.close(); });
   /* «تسجيل شراء» لصنف ناقص: يفتح نافذة المصروف في قسم المنزل والصنف مختار */
   detDlg.addEventListener("click", function(ev){
+    var hb = ev.target.closest("button[data-have]");
+    if (hb){
+      /* «متوفر عندي»: تُفتح نافذته في قسم المنزل للسلعة نفسها */
+      var hid = hb.dataset.have, n = 0; detDlg.close(); show("exp");
+      (function goH(){
+        var d = null; try { d = frame.contentWindow.document; } catch(e){}
+        var o = d && d.readyState === "complete" ? d.querySelector('#stock button[data-have="' + hid + '"]') : null;
+        if (!o){ if (++n < 40) setTimeout(goH, 150); return; }
+        o.click();
+      })();
+      return;
+    }
     var b = ev.target.closest("button[data-buy]"); if (!b) return;
     var id = b.dataset.buy; detDlg.close(); show("exp");
     var tries = 0;
@@ -1226,8 +1240,8 @@ msPush();
       var st = s && s.d === det.today && s.stock ? s.stock : [];
       var row = function(x, buy){
         var w = x.left <= 0 ? (x.left === 0 ? "انتهى أمس" : "انتهى منذ " + (-x.left + 1 === 2 ? "يومين" : (-x.left + 1) + (-x.left + 1 > 10 ? " يوماً" : " أيام"))) : x.left === 1 ? "آخر يوم" : x.left === 2 ? "باقي يومان" : "باقي " + x.left + (x.left > 10 ? " يوماً" : " أيام");
-        return '<li' + (x.left <= 2 ? ' class="bad"' : '') + '><span>' + esc(x.n + (x.q ? " " + x.q : "")) + '<small>' + esc(x.nv ? "سلعة رئيسية · لم يُسجَّل شراؤها" : (x.car ? "بتاريخ " : "اشتُري ") + dm(x.d) + (x.car ? " · تقديراً حتى " : " · يكفي حتى ") + dm(x.end)) + '</small></span>' +
-          (buy && x.id ? '<button type="button" class="buy" data-buy="' + esc(x.id) + '">تسجيل شراء</button>' : '<b>' + esc(w) + '</b>') + '</li>';
+        return '<li' + (x.left <= 2 ? ' class="bad"' : '') + '><span>' + esc(x.n + (x.q ? " " + x.q : "")) + '<small>' + esc(x.nv ? "سلعة رئيسية · لم يُسجَّل شراؤها" : (x.car ? "بتاريخ " : x.hv ? "متوفر من قبل · سُجّل " : "اشتُري ") + dm(x.d) + (x.car ? " · تقديراً حتى " : " · يكفي حتى ") + dm(x.end)) + '</small></span>' +
+          (buy && x.id ? '<span class="bb">' + (x.nv && x.once ? '<button type="button" class="buy alt" data-have="' + esc(x.id) + '">متوفر عندي</button>' : '') + '<button type="button" class="buy" data-buy="' + esc(x.id) + '">تسجيل شراء</button></span>' : '<b>' + esc(w) + '</b>') + '</li>';
       };
       var have = st.filter(function(x){ return x.left > 0; }), miss = st.filter(function(x){ return x.left <= 0; }).sort(function(a, b){ return b.left - a.left; });
       h = st.length ? '<h2 style="font-size:1.05rem">المتوفر (' + have.length + ')</h2>' + (have.length ? '<ul>' + have.map(function(x){ return row(x, false); }).join("") + '</ul>' : '<p>لا يوجد صنف متوفر حالياً.</p>') +

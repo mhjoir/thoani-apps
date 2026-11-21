@@ -225,6 +225,17 @@ body.has-tabs main{padding-bottom:96px}
   </form>
 </dialog>
 
+<dialog id="have-dlg" aria-labelledby="hv-h">
+  <form class="form" id="have-form">
+    <h2 id="hv-h">متوفر عندي</h2>
+    <p style="margin:0" id="hv-info"></p>
+    <div class="f"><label for="hv-days">الموجود يكفي كم يوماً من اليوم؟</label><input type="text" inputmode="numeric" id="hv-days" autocomplete="off"></div>
+    <p class="hint" style="margin:0;color:var(--muted);font-size:.9rem">يُسجَّل مرة واحدة لكل سلعة، ولا يُحسب مصروفاً. بعد انتهاء المدة تنزل السلعة إلى الناقص.</p>
+    <p class="msg warn" id="hv-warn" hidden></p>
+    <div class="row"><button type="submit" class="btn primary">حفظ</button><button type="button" class="btn" id="hv-cancel">إلغاء</button></div>
+  </form>
+</dialog>
+
 <dialog id="settle-dlg" aria-labelledby="st-h">
   <form class="form" id="settle-form">
     <h2 id="st-h">تسوية التجاوز</h2>
@@ -265,7 +276,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 21;
+  var VERSION = 22;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -359,6 +370,11 @@ body.has-tabs main{padding-bottom:96px}
         out.months[k] = {income:Number(o.income), limits:lim};
         if (/^\d{4}-\d{2}-\d{2}$/.test(String(o.from || ""))) out.months[k].from = String(o.from);
       });
+    }
+    /* «متوفر عندي»: سلعة موجودة من قبل تُسجَّل مدتها مرة واحدة بلا مصروف */
+    if (v.have && typeof v.have === "object"){
+      var hv = {}; Object.keys(v.have).forEach(function(k){ var x = v.have[k], n = x ? Math.round(Number(x.days)) : 0; if (itemOf(k) && n >= 1 && n <= 366 && /^\d{4}-\d\d-\d\d$/.test(String(x.date))) hv[k] = {date:String(x.date), days:n}; });
+      if (Object.keys(hv).length) out.have = hv;
     }
     if (v.catDays && typeof v.catDays === "object"){
       var cdd = {}; Object.keys(v.catDays).forEach(function(k){ var n = Math.round(Number(v.catDays[k])); if (n >= 1 && n <= 366) cdd[k] = n; });
@@ -669,18 +685,20 @@ body.has-tabs main{padding-bottom:96px}
   function stock(){
     var td = today(), latest = {};
     expenses.forEach(function(e){ if (e.item && e.days >= 1 && itemOf(e.item) && e.date <= td && (!latest[e.item] || e.date > latest[e.item].date)) latest[e.item] = e; });
+    var hav = (cfg && cfg.have) || {};
+    Object.keys(hav).forEach(function(k){ var x = hav[k]; if (itemOf(k) && x.date <= td && (!latest[k] || x.date > latest[k].date)) latest[k] = {item:k, date:x.date, days:x.days, hv:true}; });
     fuelRows.forEach(function(e){ if (e.key && e.days >= 1 && e.date <= td && (!latest[e.key] || e.date > latest[e.key].date)) latest[e.key] = e; });
     var rows = Object.keys(latest).map(function(k){ var e = latest[k], end = addDays(e.date, Math.round(e.days) - 1); return {it:e.ext ? {n:e.lbl, u:""} : itemOf(k), e:e, end:end, left:dayDiff(td, end) + 1, car:!!e.ext}; })
       .filter(function(x){ return x.left > -60; }).sort(function(a, b){ return a.left - b.left; });
-    stockRows = rows.map(function(x){ return {id:x.car ? "" : x.e.item, n:x.it.n, q:x.e.qty ? qtyFmt(x.e.qty) + " " + (x.e.unit || x.it.u) : "", d:x.e.date, end:x.end, left:x.left, car:x.car ? 1 : 0}; });
+    stockRows = rows.map(function(x){ return {id:x.car ? "" : x.e.item, n:x.it.n, q:x.e.qty ? qtyFmt(x.e.qty) + " " + (x.e.unit || x.it.u) : "", d:x.e.date, end:x.end, left:x.left, car:x.car ? 1 : 0, hv:x.e.hv ? 1 : 0}; });
     var never = MAIN.filter(function(id){ return !latest[id] && !rows.some(function(x){ return !x.car && x.e.item === id; }); }).map(itemOf).filter(Boolean);
     /* صنف رئيسي اشتُري قديماً وخرج من القائمة (أكثر من 60 يوماً) يُعامل كغير مشترى */
     MAIN.forEach(function(id){ if (latest[id] && !rows.some(function(x){ return !x.car && x.e.item === id; }) && itemOf(id)) never.push(itemOf(id)); });
-    stockRows = stockRows.concat(never.map(function(it){ return {id:it.id, n:it.n, q:"", d:"", end:"", left:-999, car:0, nv:1}; }));
-    $("stock-card").hidden = !rows.length && !expenses.length;
-    $("stock").innerHTML = never.map(function(it){ return '<li><span class="what"><b>' + esc(it.n) + '</b><span>سلعة رئيسية · لم يُسجَّل شراؤها</span></span><span class="pill over">ناقص</span></li>'; }).join("") + rows.map(function(x){
+    stockRows = stockRows.concat(never.map(function(it){ return {id:it.id, n:it.n, q:"", d:"", end:"", left:-999, car:0, nv:1, once:hav[it.id] ? 0 : 1}; }));
+    $("stock-card").hidden = !rows.length && !never.length;
+    $("stock").innerHTML = never.map(function(it){ return '<li><span class="what"><b>' + esc(it.n) + '</b><span>سلعة رئيسية · لم يُسجَّل شراؤها</span></span>' + (hav[it.id] ? '<span class="pill over">ناقص</span>' : '<button type="button" class="btn sm" data-have="' + it.id + '">متوفر عندي</button>') + '</li>'; }).join("") + rows.map(function(x){
       var st = x.left <= 0 ? '<span class="pill over">انتهى</span>' : x.left <= 2 ? '<span class="pill near">' + (x.left === 1 ? "آخر يوم" : "باقي يومان") + '</span>' : '<span class="pill ok">باقي ' + daysWord(x.left) + '</span>';
-      return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>' + (x.car ? 'بتاريخ ' : 'اشتُري ') + esc(dayFmt.format(dateOf(x.e.date))) + ' · ' + (x.car ? 'تقديراً حتى ' : 'يكفي حتى ') + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + '</li>';
+      return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>' + (x.car ? 'بتاريخ ' : x.e.hv ? 'متوفر من قبل · سُجّل ' : 'اشتُري ') + esc(dayFmt.format(dateOf(x.e.date))) + ' · ' + (x.car ? 'تقديراً حتى ' : 'يكفي حتى ') + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + '</li>';
     }).join("");
   }
   function setTick(el, prog){ el.hidden = prog == null; if (prog != null) el.style.insetInlineStart = (prog * 100) + "%"; }
@@ -815,6 +833,24 @@ body.has-tabs main{padding-bottom:96px}
     } catch(e){ b.disabled = false; b.textContent = "تعذّر الحذف"; }
   });
 
+  /* ---------- متوفر عندي ---------- */
+  var haveId = null;
+  $("stock").addEventListener("click", function(ev){
+    var b = ev.target.closest("button[data-have]"); if (!b) return;
+    var it = itemOf(b.dataset.have); if (!it) return;
+    haveId = it.id; $("hv-info").textContent = "السلعة: " + it.n; $("hv-days").value = Math.max(1, Math.ceil(it.p[0] / rateOf(it) - 1e-9)); $("hv-warn").hidden = true;
+    open($("have-dlg")); try { $("hv-days").select(); } catch(e){}
+  });
+  $("hv-cancel").addEventListener("click", function(){ $("have-dlg").close(); });
+  $("have-form").addEventListener("submit", async function(ev){
+    ev.preventDefault();
+    var n = Math.round(num($("hv-days").value)), w = $("hv-warn");
+    if (!(n >= 1)){ w.hidden = false; w.textContent = "اكتب عدد الأيام (يوم واحد على الأقل)."; return; }
+    var h = Object.assign({}, cfg.have || {}); h[haveId] = {date:today(), days:Math.min(n, 366)};
+    try { await saveCfg(cleanCfg(Object.assign({}, cfg, {have:h}))); $("have-dlg").close(); render(); }
+    catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+  });
+
   /* ---------- تسوية التجاوز ---------- */
   var stCat = null;
   function stDef(){ var c = cfg.cats.find(function(x){ return x.id === stCat; }); return c ? Math.max(0, Math.round((spentIn(month, c.id) - limitOf(month, c)) * 100) / 100) : 0; }
@@ -903,6 +939,7 @@ body.has-tabs main{padding-bottom:96px}
     if (cfg && cfg.adjs) next.adjs = cfg.adjs;
     if (cfg && cfg.rates) next.rates = cfg.rates;
     if (cfg && cfg.catDays) next.catDays = cfg.catDays;
+    if (cfg && cfg.have) next.have = cfg.have;
     try {
       await saveCfg(next);
       $("cfg-dlg").close(); render();
@@ -941,7 +978,7 @@ body.has-tabs main{padding-bottom:96px}
   async function setOnce(val){
     var months = {}; Object.keys(cfg.months || {}).forEach(function(k){ months[k] = cfg.months[k]; });
     if (val) months[month] = val; else delete months[month];
-    var next = {income:cfg.income, cats:cfg.cats, months:months, adjs:cfg.adjs, rates:cfg.rates, catDays:cfg.catDays};
+    var next = {income:cfg.income, cats:cfg.cats, months:months, adjs:cfg.adjs, rates:cfg.rates, catDays:cfg.catDays, have:cfg.have};
     await saveCfg(cleanCfg(next));
     $("once-dlg").close(); render();
   }
