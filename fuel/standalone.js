@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "65";
+var VERSION = "66";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1239,12 +1239,12 @@ msPush();
     if (kind === "day"){
       t = "تفاصيل الحد اليومي";
       if (s && s.d === det.today && s.dayLimit != null){
-        var rows = (s.dayRows || []).slice().sort(function(a, b){ return b.s - a.s; });
-        h = '<ul>' + li("ميزانية الشهر", "", n2(s.income) + " ريال") + li("المحسوب على الأيام السابقة", "", n2(s.before || 0) + " ريال") + (s.swept > 0 ? li("وفر الأيام السابقة", "حُوّل إلى «" + s.sweepN + "» وحُسب كأنه صُرف", n2(s.swept) + " ريال") : "") + li("الأيام الباقية ومنها اليوم", "", String(s.daysLeft)) + li("الحد اليومي", "(الميزانية − السابق) ÷ الأيام الباقية", n2(s.dayLimit) + " ريال", "sum") + '</ul>' + weekHtml(s) +
+        var rows = (s.dayRows || []).slice().sort(function(a, b){ return b.s - a.s; }), cl = s.cashLimit != null ? Number(s.cashLimit) : Number(s.dayLimit);
+        h = '<ul>' + li("ميزانية الشهر", "", n2(s.income) + " ريال") + li("المحسوب على الأيام السابقة", "", n2(s.before || 0) + " ريال") + (s.swept > 0 ? li("المتبقي الفعلي للأيام السابقة", "حُوّل إلى «" + s.sweepN + "» وحُسب كأنه صُرف", n2(s.swept) + " ريال") : "") + li("الأيام الباقية ومنها اليوم", "", String(s.daysLeft)) + li("الحد اليومي", "(الميزانية − السابق) ÷ الأيام الباقية", n2(s.dayLimit) + " ريال", "sum") + '</ul>' + weekHtml(s) +
           '<h2 style="margin-top:16px;font-size:1.05rem">المحسوب على اليوم</h2>' + (rows.length ? '<ul>' + rows.map(function(r){
             return li(r.n, r.k > 1 ? "من " + n2(r.a) + " ريال بتاريخ " + dm(r.d) + " · اليوم " + r.i + " من " + r.k : "مدفوع اليوم", n2(r.s)); }).join("") +
             li("المجموع", "", n2(s.daySpent) + " ريال", "sum") + li(s.dayLimit - s.daySpent < 0 ? "تجاوز" : "الباقي لليوم", "", n2(Math.abs(s.dayLimit - s.daySpent)) + " ريال", s.dayLimit - s.daySpent < 0 ? "sum bad" : "sum") + '</ul>' : '<p>لا شيء محسوب على اليوم.</p>') +
-          '<h2 style="margin-top:16px;font-size:1.05rem">المدفوع فعلياً اليوم</h2><ul>' + rows.filter(function(r){ return r.d === det.today; }).map(function(r){ return li(r.n, r.k > 1 ? "يكفي " + (r.k === 2 ? "يومين" : r.k + (r.k > 10 ? " يوماً" : " أيام")) + " من الشهر" : "", n2(r.a)); }).join("") + li("المجموع", "ما خرج من الجيب بتاريخ اليوم", n2(s.dayPaid || 0) + " ريال", "sum") + li(s.dayLimit - (s.dayPaid || 0) < 0 ? "تجاوز فعلي" : "المتبقي الفعلي", "الحد اليومي − المدفوع فعلياً", n2(Math.abs(s.dayLimit - (s.dayPaid || 0))) + " ريال", s.dayLimit - (s.dayPaid || 0) < 0 ? "sum bad" : "sum") + '</ul>' +
+          '<h2 style="margin-top:16px;font-size:1.05rem">المدفوع فعلياً اليوم</h2><ul>' + rows.filter(function(r){ return r.d === det.today; }).map(function(r){ return li(r.n, r.k > 1 ? "يكفي " + (r.k === 2 ? "يومين" : r.k + (r.k > 10 ? " يوماً" : " أيام")) + " من الشهر" : "", n2(r.a)); }).join("") + li("المجموع", "ما خرج من الجيب بتاريخ اليوم", n2(s.dayPaid || 0) + " ريال", "sum") + li("الحد النقدي لليوم", "(الميزانية − المدفوع قبل اليوم − المحوَّل) ÷ الأيام الباقية", n2(cl) + " ريال") + li(cl - (s.dayPaid || 0) < 0 ? "تجاوز فعلي" : "المتبقي الفعلي", "الحد النقدي − المدفوع فعلياً" + (s.sweepN && cl - (s.dayPaid || 0) > 0 ? " · يتحول في نهاية اليوم إلى «" + s.sweepN + "»" : ""), n2(Math.abs(cl - (s.dayPaid || 0))) + " ريال", cl - (s.dayPaid || 0) < 0 ? "sum bad" : "sum") + '</ul>' +
           '<p>المشتريات التي تكفي أكثر من يوم يُحسب منها نصيب كل يوم فقط.</p>';
       } else h = none;
     } else if (kind === "mon"){
@@ -1254,7 +1254,7 @@ msPush();
         var cs = (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }), paid = s.spent - (Number(s.swept) || 0), restSum = cs.reduce(function(a, c){ return a + (c.l - c.s); }, 0), free = s.left - restSum, pr = (s.rows || []).filter(function(r){ return !r.r; });
         /* أولاً: المدفوع فعلياً، ثم توزيع الباقي على البنود ومبلغ كل بند */
         h = '<ul>' + li("المدفوع فعلياً هذا الشهر", "ما خرج من الجيب منذ بداية الشهر", n2(paid) + " ريال", "sum") +
-          (s.swept > 0 ? li("فائض الأيام المحوَّل", "إلى «" + s.sweepN + "» ويُحسب كأنه صُرف", n2(s.swept) + " ريال") : "") + '</ul>' +
+          (s.swept > 0 ? li("المتبقي الفعلي المحوَّل", "إلى «" + s.sweepN + "» ويُحسب كأنه صُرف", n2(s.swept) + " ريال") : "") + '</ul>' +
           /* تفاصيل المدفوع فعلياً: كل عملية بتاريخها وبندها ومبلغها */
           (pr.length ? '<details class="pd"' + (pr.length <= 6 ? " open" : "") + '><summary>تفاصيل المدفوع (' + (pr.length === 1 ? "عملية واحدة" : pr.length === 2 ? "عمليتان" : pr.length + (pr.length > 10 ? " عملية" : " عمليات")) + ')</summary><ul>' +
             pr.map(function(r){ return li(r.n, dm(r.d) + " · " + (r.x ? "السيارة" : r.c) + (r.f ? " · من أصل " + n2(r.f) : ""), n2(r.a)); }).join("") + li("المجموع", "", n2(pr.reduce(function(a, r){ return a + r.a; }, 0)) + " ريال", "sum") + '</ul></details>' : '<p>لا توجد مدفوعات مسجّلة هذا الشهر.</p>') +
@@ -1481,12 +1481,13 @@ msPush();
     if (due) h += '<button type="button" class="al w" data-odo="1">' + ico(I.gauge) + '<span>يلزم تسجيل ممشى اليوم ليُحسب كم يكفي البنزين</span>' + ico(I.chev, 18) + '</button>';
     if (!s){ return h + '<div class="card"><span class="sub">المتاح اليوم</span><div class="big"><b>—</b><span>ريال</span></div><p class="sub">جارٍ تحميل البيانات…</p></div>'; }
     var L = Number(s.dayLimit) || 0, sp = Number(s.daySpent) || 0, left = L - sp, pc = L > 0 ? Math.min(100, sp / L * 100) : (sp > 0 ? 100 : 0), over = left < -0.005;
-    var pd = Number(s.dayPaid) || 0, ppc = L > 0 ? Math.min(100, pd / L * 100) : (pd > 0 ? 100 : 0), pov = L - pd < -0.005;
+    /* المتبقي فعلياً يُقاس بالحد النقدي: ما بقي من الميزانية بعد كل ما دُفع وحُوّل ÷ الأيام الباقية */
+    var Lc = s.cashLimit != null ? Number(s.cashLimit) : L, pd = Number(s.dayPaid) || 0, ppc = Lc > 0 ? Math.min(100, pd / Lc * 100) : (pd > 0 ? 100 : 0), pov = Lc - pd < -0.005;
     h += '<button type="button" class="card" data-det="day"><span class="sub">' + (over ? "تجاوزت حد اليوم بـ" : "المتاح اليوم") + '</span><div class="big' + (over ? " over" : "") + '"><b>' + n0(Math.abs(left)) + '</b><span>ريال</span></div>' +
       '<div class="pb' + (over ? " over" : "") + '"><i data-w="' + pc + '"></i></div><div class="two"><span>المحسوب على اليوم <b>' + n0(sp) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div></button>' +
       /* بطاقة مستقلة للمتبقي فعلياً اليوم: الحد اليومي ناقص ما خرج من الجيب بتاريخ اليوم قبل توزيعه على الأيام */
-      '<button type="button" class="card" data-det="day"><span class="sub">' + (pov ? "تجاوزت فعلياً حد اليوم بـ" : "المتبقي فعلياً اليوم") + '</span><div class="big' + (pov ? " over" : "") + '"><b>' + n0(Math.abs(L - pd)) + '</b><span>ريال</span></div>' +
-      '<div class="pb' + (pov ? " over" : "") + '"><i data-w="' + ppc + '"></i></div><div class="two"><span>المدفوع فعلياً <b>' + n0(pd) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div></button>';
+      '<button type="button" class="card" data-det="day"><span class="sub">' + (pov ? "تجاوزت فعلياً حد اليوم بـ" : "المتبقي فعلياً اليوم") + '</span><div class="big' + (pov ? " over" : "") + '"><b>' + n0(Math.abs(Lc - pd)) + '</b><span>ريال</span></div>' +
+      '<div class="pb' + (pov ? " over" : "") + '"><i data-w="' + ppc + '"></i></div><div class="two"><span>المدفوع فعلياً <b>' + n0(pd) + '</b> من ' + n0(Lc) + '</span><span class="lnk">التفاصيل</span></div></button>';
     var inc = Number(s.income) || 0, ms = Number(s.spent) || 0, ml = inc - ms, mp = inc > 0 ? Math.min(100, ms / inc * 100) : 0, mo = ml < -0.005;
     h += '<button type="button" class="card" data-det="mon"><div class="hd"><span class="sub">' + (mo ? "تجاوزت ميزانية الشهر بـ" : "المتاح هذا الشهر") + '</span><span class="sub">باقي ' + days(s.daysLeft) + '</span></div><div class="big' + (mo ? " over" : "") + '"><b>' + n0(Math.abs(ml)) + '</b><span>ريال</span></div>' +
       '<div class="pb' + (mo ? " over" : "") + '"><i data-w="' + mp + '"></i></div><div class="two"><span>صرفت <b>' + n0(ms) + '</b> من ' + n0(inc) + '</span><span class="lnk">التفاصيل</span></div></button>';

@@ -307,7 +307,7 @@ body.has-tabs main{padding-bottom:96px}
     <div class="f"><label for="r-m0">أحد أشهر الاستحقاق</label><select id="r-m0"></select></div>
     <div class="f"><label for="r-day">يوم الاستحقاق من الشهر</label><input type="text" inputmode="numeric" id="r-day" autocomplete="off"></div>
     <div class="f"><label for="r-start">يبدأ الحجز من</label><select id="r-start"></select></div>
-    <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" id="r-sweep" style="width:22px;height:22px;flex:none;margin-top:2px"><span>أضِف إليه ما يتوفر من الحد اليومي في نهاية كل يوم، ويُخصم من الشهر كأنه صُرف</span></label>
+    <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" id="r-sweep" style="width:22px;height:22px;flex:none;margin-top:2px"><span>أضِف إليه «المتبقي فعلياً» في نهاية كل يوم (الحد اليومي ناقص المدفوع في اليوم)، ويُخصم من الشهر كأنه صُرف</span></label>
     <p class="hint" id="r-info" style="margin:0;color:var(--muted);font-size:.9rem"></p>
     <p class="msg warn" id="r-warn" hidden></p>
     <div class="row"><button type="submit" class="btn primary">حفظ</button><button type="button" class="btn" id="r-cancel">إلغاء</button></div>
@@ -331,7 +331,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 39;
+  var VERSION = 40;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -752,10 +752,14 @@ body.has-tabs main{padding-bottom:96px}
   }
   /* وفر الأيام المنتهية: ما بقي من حد كل يوم يُحوَّل إلى الحجز ويُحسب كأنه صُرف، فلا يرتفع حد الأيام التالية */
   function sweepRes(){ return ((cfg && cfg.res) || []).find(function(r){ return r.sweep; }) || null; }
+  /* المدفوع نقداً في كل يوم من أيام الشهر (بتاريخ الدفع، بلا توزيع) */
+  function dayPaidArr(m){ var F = eff(m).from, last = daysIn(m), u = []; for (var k = 0; k < last; k++) u.push(0);
+    expenses.concat(fuelRows).forEach(function(e){ if (e.date.slice(0,7) === m && (!F || e.date >= F)) u[Number(e.date.slice(8)) - 1] += e.amount; }); return u; }
   function sweepDays(m){
     var r = sweepRes(), td = today(), cm = td.slice(0,7), out = []; if (!r || m > cm || m < r.sweep.slice(0,7)) return out;
     var E = eff(m), last = daysIn(m), end = m < cm ? last : Number(td.slice(8)) - 1, d0 = Math.max(m === r.sweep.slice(0,7) ? Number(r.sweep.slice(8)) : 1, E.from ? Number(E.from.slice(8)) : 1);
-    var inc = E.income + extraOf(m) - carryAll(m) - reserveOf(m), u = dayUse(m), cum = 0, sw = 0;
+    /* يُحوَّل «المتبقي فعلياً»: حد اليوم النقدي (ما بقي من الميزانية بعد المدفوع والمحوَّل ÷ الأيام الباقية) ناقص ما دُفع نقداً في ذلك اليوم */
+    var inc = E.income + extraOf(m) - carryAll(m) - reserveOf(m), u = dayPaidArr(m), cum = 0, sw = 0;
     for (var d = 1; d <= end; d++){
       if (d >= d0){ var s = Math.max(0, (inc - cum - sw) / (last - d + 1)) - u[d - 1]; if (s > 0.005){ sw += s; out.push({d:d, a:s}); } }
       cum += u[d - 1]; }
@@ -860,14 +864,14 @@ body.has-tabs main{padding-bottom:96px}
       /* الحد اليومي الشامل (المنزل + السيارة): ما بقي من ميزانية الشهر حتى بداية اليوم مقسوماً على الأيام الباقية ومنها اليوم */
       var td = today(), last = new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate(), daysLeft = Math.max(1, last - Number(td.slice(8)) + 1), before = 0, dsp = 0;
       /* مشتريات الكمية (أرز يكفي 20 يوماً مثلاً) تُوزَّع على أيام كفايتها حتى نهاية الشهر، فلا تُحسب كلها على يوم الشراء */
-      var endM = m + "-" + pad(last), dayRows = [], paid = 0, wk = [0,0,0,0,0,0,0];
+      var endM = m + "-" + pad(last), dayRows = [], paid = 0, paidBefore = 0, wk = [0,0,0,0,0,0,0];
       expenses.concat(fuelRows).forEach(function(e){
         if (e.date.slice(0,7) !== m || (E.from && e.date < E.from) || e.date > td) return;
         var span = e.days > 1 ? Math.max(1, Math.min(Math.round(e.days), dayDiff(e.date, endM) + 1)) : 1, share = e.amount / span, gone = Math.min(span, dayDiff(e.date, td));
         before += share * gone;
         /* نصيب كل يوم من الأيام السبعة القادمة من المشتريات الموزّعة */
         for (var wj = 0; wj < 7; wj++) if (dayDiff(e.date, td) + wj < span) wk[wj] += share;
-        if (e.date === td) paid += e.amount;
+        if (e.date === td) paid += e.amount; else paidBefore += e.amount;
         if (gone < span){
           dsp += share;
           var cc = cfg.cats.find(function(x){ return x.id === e.cat; }), ii = e.item ? itemOf(e.item) : null;
@@ -875,7 +879,7 @@ body.has-tabs main{padding-bottom:96px}
         }
       });
       var dl = Math.max(0, (inc - before - swp) / daysLeft);
-      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, rmv:Math.round(resMoved(m, null) * 100) / 100, swept:Math.round(swp * 100) / 100, sweepN:swr ? swr.n : "", dayRows:dayRows, week:wk.slice(0, Math.min(7, daysLeft)).map(function(x){ return Math.round(x * 100) / 100; }), stock:stockRows, res:((cfg && cfg.res) || []).map(function(r){ var x = resInfo(r, m); return {n:r.n, a:r.amount, per:Math.round(x.per * 100) / 100, saved:Math.round(Math.max(0, x.saved) * 100) / 100, due:x.due, st:r.start, e:r.every, pre:Math.round(resPre(r) * 100) / 100, sw:r.sweep ? 1 : 0, now:x.now ? 1 : 0}; }), ver:VERSION,
+      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, cashLimit:Math.round(Math.max(0, (inc - paidBefore - swp) / daysLeft) * 100) / 100, rmv:Math.round(resMoved(m, null) * 100) / 100, swept:Math.round(swp * 100) / 100, sweepN:swr ? swr.n : "", dayRows:dayRows, week:wk.slice(0, Math.min(7, daysLeft)).map(function(x){ return Math.round(x * 100) / 100; }), stock:stockRows, res:((cfg && cfg.res) || []).map(function(r){ var x = resInfo(r, m); return {n:r.n, a:r.amount, per:Math.round(x.per * 100) / 100, saved:Math.round(Math.max(0, x.saved) * 100) / 100, due:x.due, st:r.start, e:r.every, pre:Math.round(resPre(r) * 100) / 100, sw:r.sweep ? 1 : 0, now:x.now ? 1 : 0}; }), ver:VERSION,
         rows:expenses.concat(fuelRows).filter(function(e){ return e.date.slice(0,7) === m && (!E.from || e.date >= E.from); }).sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : String(b.at || "") < String(a.at || "") ? -1 : 1; }).map(function(e){
           var c2 = cfg.cats.find(function(x){ return x.id === e.cat; }), i2 = e.item ? itemOf(e.item) : null;
           return {id:e.id, n:e.ext ? (e.lbl || "السيارة") : i2 ? i2.n + (e.qty ? " " + qtyFmt(e.qty) + " " + (e.unit || i2.u) : "") : (e.note || (c2 ? c2.name : "مصروف")), c:c2 ? c2.name : "", a:e.amount, d:e.date, k:e.days > 1 ? Math.round(e.days) : 1, x:e.ext ? 1 : 0, f:e.full > e.amount ? e.full : 0}; }).concat(resPays(m).map(function(p){ return {id:p.id, n:p.n, c:"سداد من المحجوز", a:p.a, d:p.d, k:1, x:0, r:1}; })).sort(function(a, b){ return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; }),
