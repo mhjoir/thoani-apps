@@ -276,10 +276,11 @@ body.has-tabs main{padding-bottom:96px}
     <h2 id="r-h">حجز مبلغ لقسط دوري</h2>
     <div class="f"><label for="r-name">اسم القسط</label><input type="text" id="r-name" autocomplete="off" maxlength="40"></div>
     <div class="f"><label for="r-amt">مبلغ القسط (ريال)</label><input type="text" inputmode="decimal" id="r-amt" autocomplete="off" placeholder="0"></div>
-    <div class="f"><label for="r-every">يتكرر</label><select id="r-every"><option value="6">كل 6 أشهر</option><option value="12">كل سنة</option><option value="3">كل 3 أشهر</option></select></div>
+    <div class="f"><label for="r-every">يتكرر</label><select id="r-every"><option value="6">كل 6 أشهر</option><option value="12">كل سنة</option><option value="3">كل 3 أشهر</option><option value="1">كل شهر (مبلغ ثابت، مثل سداد ديون)</option></select></div>
     <div class="f"><label for="r-m0">أحد أشهر الاستحقاق</label><select id="r-m0"></select></div>
     <div class="f"><label for="r-day">يوم الاستحقاق من الشهر</label><input type="text" inputmode="numeric" id="r-day" autocomplete="off"></div>
     <div class="f"><label for="r-start">يبدأ الحجز من</label><select id="r-start"></select></div>
+    <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" id="r-sweep" style="width:22px;height:22px;flex:none;margin-top:2px"><span>أضِف إليه ما يتوفر من الحد اليومي في نهاية كل يوم، ويُخصم من الشهر كأنه صُرف</span></label>
     <p class="hint" id="r-info" style="margin:0;color:var(--muted);font-size:.9rem"></p>
     <p class="msg warn" id="r-warn" hidden></p>
     <div class="row"><button type="submit" class="btn primary">حفظ</button><button type="button" class="btn" id="r-cancel">إلغاء</button></div>
@@ -303,7 +304,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 26;
+  var VERSION = 27;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -413,9 +414,11 @@ body.has-tabs main{padding-bottom:96px}
     }
     /* مبالغ محجوزة لأقساط دورية (إيجار كل ستة أشهر مثلاً) */
     if (Array.isArray(v.res)){
-      var rs = v.res.filter(function(r){ return r && r.id && Number(r.amount) > 0 && /^\d{4}-\d{2}$/.test(String(r.start)) && [3,6,12].indexOf(Number(r.every)) >= 0 && Number(r.m0) >= 1 && Number(r.m0) <= 12; })
+      var rs = v.res.filter(function(r){ return r && r.id && Number(r.amount) > 0 && /^\d{4}-\d{2}$/.test(String(r.start)) && [1,3,6,12].indexOf(Number(r.every)) >= 0 && Number(r.m0) >= 1 && Number(r.m0) <= 12; })
         .map(function(r){ var d = Math.round(Number(r.day)); return {id:String(r.id), n:String(r.n || "قسط").slice(0, 40), amount:Number(r.amount), every:Number(r.every), m0:Number(r.m0), day:d >= 1 && d <= 31 ? d : 1, start:String(r.start),
           paid:(Array.isArray(r.paid) ? r.paid : []).filter(function(p){ return p && /^\d{4}-\d\d-\d\d$/.test(String(p.d)) && Number(p.a) > 0; }).map(function(p){ return {d:String(p.d), a:Number(p.a)}; })}; });
+      /* وفر الحد اليومي يُحوَّل إلى حجز واحد فقط، من تاريخ تفعيله */
+      var swSeen = false; v.res.forEach(function(r){ var o = r && rs.find(function(x){ return x.id === String(r.id); }); if (o && !swSeen && /^\d{4}-\d\d-\d\d$/.test(String(r.sweep || ""))){ o.sweep = String(r.sweep); swSeen = true; } });
       if (rs.length) out.res = rs;
     }
     /* تسويات التجاوز: نقل من بند إلى بند، أو مبلغ خارجي غير الراتب */
@@ -634,10 +637,33 @@ body.has-tabs main{padding-bottom:96px}
   function resNext(r, i){ var j = i + 1; while (!resDue(r, j)) j++; return j; }
   function resShare(r, ym){ var i = ymIdx(ym), s = ymIdx(r.start); if (i < s) return 0; var p = i; while (!resDue(r, p)) p--; return r.amount / (resNext(r, i) - Math.max(s, p)); }
   function reserveOf(m){ return ((cfg && cfg.res) || []).reduce(function(a, r){ return a + resShare(r, m); }, 0); }
-  function resSaved(r, ym){ var t = 0, e = ymIdx(ym); for (var i = ymIdx(r.start); i <= e; i++) t += resShare(r, idxYm(i)); (r.paid || []).forEach(function(p){ if (p.d.slice(0,7) <= ym) t -= p.a; }); return t; }
+  /* نصيب كل يوم من أيام الشهر من المصروفات بعد توزيعها على أيام كفايتها */
+  function dayUse(m){
+    var F = eff(m).from, last = daysIn(m), endM = m + "-" + pad(last), u = []; for (var k = 0; k < last; k++) u.push(0);
+    expenses.concat(fuelRows).forEach(function(e){
+      if (e.date.slice(0,7) !== m || (F && e.date < F)) return;
+      var span = e.days > 1 ? Math.max(1, Math.min(Math.round(e.days), dayDiff(e.date, endM) + 1)) : 1, d0 = Number(e.date.slice(8)) - 1;
+      for (var j = 0; j < span; j++) u[d0 + j] += e.amount / span; });
+    return u;
+  }
+  /* وفر الأيام المنتهية: ما بقي من حد كل يوم يُحوَّل إلى الحجز ويُحسب كأنه صُرف، فلا يرتفع حد الأيام التالية */
+  function sweepRes(){ return ((cfg && cfg.res) || []).find(function(r){ return r.sweep; }) || null; }
+  function sweepDays(m){
+    var r = sweepRes(), td = today(), cm = td.slice(0,7), out = []; if (!r || m > cm || m < r.sweep.slice(0,7)) return out;
+    var E = eff(m), last = daysIn(m), end = m < cm ? last : Number(td.slice(8)) - 1, d0 = Math.max(m === r.sweep.slice(0,7) ? Number(r.sweep.slice(8)) : 1, E.from ? Number(E.from.slice(8)) : 1);
+    var inc = E.income + extraOf(m) - carryAll(m) - reserveOf(m), u = dayUse(m), cum = 0, sw = 0;
+    for (var d = 1; d <= end; d++){
+      if (d >= d0){ var s = Math.max(0, (inc - cum - sw) / (last - d + 1)) - u[d - 1]; if (s > 0.005){ sw += s; out.push({d:d, a:s}); } }
+      cum += u[d - 1]; }
+    return out;
+  }
+  function sweepOf(m){ return sweepDays(m).reduce(function(a, x){ return a + x.a; }, 0); }
+  function resSaved(r, ym){ var t = 0, e = ymIdx(ym); for (var i = ymIdx(r.start); i <= e; i++) t += resShare(r, idxYm(i));
+    if (r.sweep) for (var k = ymIdx(r.sweep.slice(0,7)); k <= e; k++) t += sweepOf(idxYm(k)); (r.paid || []).forEach(function(p){ if (p.d.slice(0,7) <= ym) t -= p.a; }); return t; }
   function resInfo(r, ym){ var i = ymIdx(ym), nd = resNext(r, i), p = i, late = false; while (!resDue(r, p)) p--;
     /* قسط حلّ موعده (هذا الشهر أو قبله) ولم يُسجَّل سداده بعد */
     if (p > ymIdx(r.start) && !(r.paid || []).some(function(q){ return q.d.slice(0,7) >= idxYm(p); })){ nd = p; late = true; }
+    if (r.every === 1){ var sv = resSaved(r, ym); return {per:resShare(r, ym), saved:sv, due:null, now:sv > 0.005 && !(r.paid || []).some(function(q){ return q.d.slice(0,7) === ym; })}; }
     return {per:resShare(r, ym), saved:resSaved(r, ym), due:idxYm(nd) + "-" + pad(Math.min(r.day, daysIn(idxYm(nd)))), now:late}; }
   function extraOf(m){ return adjs(m).reduce(function(a, x){ return a + (x.t === "extra" ? x.amount : 0); }, 0); }
   function carryAll(m){ return (cfg ? cfg.cats : []).reduce(function(a, c){ return a + carryIn(m, c); }, 0); }
@@ -652,20 +678,21 @@ body.has-tabs main{padding-bottom:96px}
     var E = eff(month), cats = cfg ? cfg.cats : [], by = spentBy(), extra = extraOf(month), carried = carryAll(month), held = reserveOf(month), income = E.income + extra - carried - held;
     $("once-note").hidden = !E.once;
     if (E.once) $("once-note").textContent = "هذا الشهر بميزانية خاصة: " + fmt(E.income) + " ريال موزّعة على البنود" + (E.from ? "، وتُحسب المصروفات من " + dayFmt.format(dateOf(E.from)) : "") + ". الحدود الأصلية تعود الشهر القادم.";
-    var spent = monthRows().reduce(function(a, e){ return a + e.amount; }, 0), left = income - spent;
+    var swp = sweepOf(month), spent = monthRows().reduce(function(a, e){ return a + e.amount; }, 0) + swp, left = income - spent;
     var isNow = month === today().slice(0,7), dim = daysIn(month), dayNo = isNow ? Number(today().slice(8)) : null;
     var prog = isNow ? dayNo / dim : null;
     $("s-left").textContent = cfg ? fmt(left) : "—"; $("s-left").style.color = left < -0.005 ? "var(--over)" : "";
     var an = $("adj-note"), parts = [];
     if (extra > 0) parts.push("أُضيف مبلغ خارجي " + fmt(extra) + " ريال");
     if (carried > 0) parts.push("خُصم عجز مرحَّل من الشهر السابق " + fmt(carried) + " ريال");
-    if (held > 0) parts.push("حُجز للأقساط " + fmt(held) + " ريال من دخل الشهر");
+    if (held > 0) parts.push("حُجز " + fmt(held) + " ريال من دخل الشهر");
+    if (swp > 0.005) parts.push("حُوّل وفر الأيام " + fmt(swp) + " ريال إلى «" + sweepRes().n + "» وحُسب ضمن المصروف");
     an.hidden = !parts.length; an.textContent = parts.join("، ") + ".";
     var rl = (cfg && cfg.res) || [];
     $("res-empty").hidden = rl.length > 0;
     $("res-log").innerHTML = rl.map(function(r){
       var x = resInfo(r, month), paidNow = (r.paid || []).some(function(p){ return p.d.slice(0,7) === month; });
-      return '<li><span class="what"><b>' + esc(r.n) + ' · ' + fmt(r.amount) + '</b><span>' + (x.per > 0 ? "حجز هذا الشهر " + fmt(x.per) + " · المحجوز " + fmt(Math.max(0, x.saved)) : "يبدأ الحجز في " + esc(monthFmt.format(dateOf(r.start + "-01")))) + ' · يحل ' + esc(dayFmt.format(dateOf(x.due))) + '</span></span>' +
+      return '<li><span class="what"><b>' + esc(r.n) + ' · ' + fmt(r.amount) + '</b><span>' + (x.per > 0 || x.saved > 0.005 ? "حجز هذا الشهر " + fmt(x.per) + " · المحجوز " + fmt(Math.max(0, x.saved)) : "يبدأ الحجز في " + esc(monthFmt.format(dateOf(r.start + "-01")))) + (x.due ? ' · يحل ' + esc(dayFmt.format(dateOf(x.due))) : '') + (r.sweep ? ' · يُضاف إليه وفر الأيام' : '') + '</span></span>' +
         (paidNow ? '<button type="button" class="btn sm" data-res-undo="' + esc(r.id) + '">تراجع عن السداد</button>' : x.now ? '<button type="button" class="btn sm primary" data-res-pay="' + esc(r.id) + '">سُدّد</button>' : '') +
         '<button type="button" class="btn sm" data-res-edit="' + esc(r.id) + '">تعديل</button></li>'; }).join("");
     $("s-spent").textContent = fmt(spent); $("s-income").textContent = cfg ? fmt(income) : "—";
@@ -711,8 +738,8 @@ body.has-tabs main{padding-bottom:96px}
   function summary(){
     if (!STANDALONE || !cfg) return;
     try {
-      var m = today().slice(0,7), E = eff(m), inc = E.income + extraOf(m) - carryAll(m) - reserveOf(m);
-      var sp = expenses.concat(fuelRows).reduce(function(a, e){ return a + (e.date.slice(0,7) === m && (!E.from || e.date >= E.from) ? e.amount : 0); }, 0);
+      var m = today().slice(0,7), E = eff(m), inc = E.income + extraOf(m) - carryAll(m) - reserveOf(m), swp = sweepOf(m), swr = sweepRes();
+      var sp = expenses.concat(fuelRows).reduce(function(a, e){ return a + (e.date.slice(0,7) === m && (!E.from || e.date >= E.from) ? e.amount : 0); }, 0) + swp;
       /* الحد اليومي الشامل (المنزل + السيارة): ما بقي من ميزانية الشهر حتى بداية اليوم مقسوماً على الأيام الباقية ومنها اليوم */
       var td = today(), last = new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate(), daysLeft = Math.max(1, last - Number(td.slice(8)) + 1), before = 0, dsp = 0;
       /* مشتريات الكمية (أرز يكفي 20 يوماً مثلاً) تُوزَّع على أيام كفايتها حتى نهاية الشهر، فلا تُحسب كلها على يوم الشراء */
@@ -730,8 +757,8 @@ body.has-tabs main{padding-bottom:96px}
           dayRows.push({n:e.ext ? (e.lbl || (cc ? cc.name : "السيارة")) : ii ? ii.n + (e.qty ? " " + qtyFmt(e.qty) + " " + (e.unit || ii.u) : "") : (cc ? cc.name : "مصروف") + (e.note ? " · " + e.note : ""), s:Math.round(share * 100) / 100, a:e.amount, d:e.date, k:span, i:gone + 1});
         }
       });
-      var dl = Math.max(0, (inc - before) / daysLeft);
-      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, dayRows:dayRows, week:wk.slice(0, Math.min(7, daysLeft)).map(function(x){ return Math.round(x * 100) / 100; }), stock:stockRows, res:((cfg && cfg.res) || []).map(function(r){ var x = resInfo(r, m); return {n:r.n, a:r.amount, per:Math.round(x.per * 100) / 100, saved:Math.round(Math.max(0, x.saved) * 100) / 100, due:x.due, st:r.start}; }), ver:VERSION,
+      var dl = Math.max(0, (inc - before - swp) / daysLeft);
+      var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, swept:Math.round(swp * 100) / 100, sweepN:swr ? swr.n : "", dayRows:dayRows, week:wk.slice(0, Math.min(7, daysLeft)).map(function(x){ return Math.round(x * 100) / 100; }), stock:stockRows, res:((cfg && cfg.res) || []).map(function(r){ var x = resInfo(r, m); return {n:r.n, a:r.amount, per:Math.round(x.per * 100) / 100, saved:Math.round(Math.max(0, x.saved) * 100) / 100, due:x.due, st:r.start, e:r.every}; }), ver:VERSION,
         rows:expenses.concat(fuelRows).filter(function(e){ return e.date.slice(0,7) === m && (!E.from || e.date >= E.from); }).sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : String(b.at || "") < String(a.at || "") ? -1 : 1; }).map(function(e){
           var c2 = cfg.cats.find(function(x){ return x.id === e.cat; }), i2 = e.item ? itemOf(e.item) : null;
           return {id:e.id, n:e.ext ? (e.lbl || "السيارة") : i2 ? i2.n + (e.qty ? " " + qtyFmt(e.qty) + " " + (e.unit || i2.u) : "") : (e.note || (c2 ? c2.name : "مصروف")), c:c2 ? c2.name : "", a:e.amount, d:e.date, k:e.days > 1 ? Math.round(e.days) : 1, x:e.ext ? 1 : 0}; }),
@@ -920,8 +947,10 @@ body.has-tabs main{padding-bottom:96px}
 
   /* ---------- مبالغ محجوزة ---------- */
   var resId = null, MN = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
-  function resDraft(){ var a = num($("r-amt").value), d = Math.round(num($("r-day").value)); return {id:resId || newId(), n:$("r-name").value.trim() || "قسط", amount:a > 0 ? Math.round(a * 100) / 100 : 0, every:Number($("r-every").value), m0:Number($("r-m0").value), day:d >= 1 && d <= 31 ? d : 1, start:$("r-start").value, paid:[]}; }
-  function resHint(){ var r = resDraft(), el = $("r-info"); if (!(r.amount > 0)){ el.textContent = "اكتب المبلغ ليظهر مقدار الحجز الشهري."; return; }
+  function resDraft(){ var a = num($("r-amt").value), d = Math.round(num($("r-day").value)); return {id:resId || newId(), n:$("r-name").value.trim() || "قسط", amount:a > 0 ? Math.round(a * 100) / 100 : 0, every:Number($("r-every").value), m0:Number($("r-m0").value), day:d >= 1 && d <= 31 ? d : 1, start:$("r-start").value, paid:[], sweep:$("r-sweep").checked ? today() : ""}; }
+  function resHint(){ var r = resDraft(), el = $("r-info"), mo = r.every === 1; $("r-m0").closest(".f").style.display = mo ? "none" : ""; $("r-day").closest(".f").style.display = mo ? "none" : "";
+    if (mo && r.amount > 0){ el.textContent = fmt(r.amount) + " ريال تُحجز من دخل كل شهر." + (r.sweep ? " ومن اليوم يُضاف إليه ما يتوفر من الحد اليومي." : ""); return; }
+    if (!(r.amount > 0)){ el.textContent = "اكتب المبلغ ليظهر مقدار الحجز الشهري."; return; }
     var nd = resNext(r, ymIdx(r.start)), n1 = nd - ymIdx(r.start);
     el.textContent = "حتى قسط " + MN[nd % 12] + ": " + fmt(resShare(r, r.start)) + " ريال شهرياً لمدة " + n1 + (n1 === 1 ? " شهر" : n1 === 2 ? " شهرين" : " أشهر") + (n1 < r.every ? "، ثم " + fmt(r.amount / r.every) + " ريال شهرياً." : "."); }
   function openRes(id){
@@ -929,7 +958,7 @@ body.has-tabs main{padding-bottom:96px}
     $("r-m0").innerHTML = MN.map(function(n, i){ return '<option value="' + (i + 1) + '">' + n + '</option>'; }).join("");
     var opts = [now, shift(now, 1), shift(now, 2)]; if (r && opts.indexOf(r.start) < 0) opts.unshift(r.start);
     $("r-start").innerHTML = opts.map(function(k){ return '<option value="' + k + '">' + esc(monthFmt.format(dateOf(k + "-01"))) + (k === now ? " (هذا الشهر)" : "") + '</option>'; }).join("");
-    $("r-name").value = r ? r.n : "قسط الإيجار"; $("r-amt").value = r ? String(r.amount) : ""; $("r-every").value = String(r ? r.every : 6); $("r-m0").value = String(r ? r.m0 : 3); $("r-day").value = String(r ? r.day : 15); $("r-start").value = r ? r.start : shift(now, 1);
+    $("r-name").value = r ? r.n : "قسط الإيجار"; $("r-amt").value = r ? String(r.amount) : ""; $("r-every").value = String(r ? r.every : 6); $("r-m0").value = String(r ? r.m0 : 3); $("r-day").value = String(r ? r.day : 15); $("r-start").value = r ? r.start : shift(now, 1); $("r-sweep").checked = !!(r && r.sweep);
     $("r-del").hidden = !r; $("r-warn").hidden = true; resHint(); open($("res-dlg"));
   }
   async function saveRes(list){ await saveCfg(cleanCfg(Object.assign({}, cfg, {res:list}))); render(); }
@@ -939,8 +968,8 @@ body.has-tabs main{padding-bottom:96px}
   $("res-form").addEventListener("submit", async function(ev){
     ev.preventDefault(); var r = resDraft(), w = $("r-warn");
     if (!(r.amount > 0)){ w.hidden = false; w.textContent = "اكتب مبلغ القسط بالريال."; return; }
-    var old = (cfg.res || []).find(function(x){ return x.id === r.id; }); if (old) r.paid = old.paid || [];
-    try { await saveRes((cfg.res || []).filter(function(x){ return x.id !== r.id; }).concat([r])); $("res-dlg").close(); }
+    var old = (cfg.res || []).find(function(x){ return x.id === r.id; }); if (old){ r.paid = old.paid || []; if (r.sweep && old.sweep) r.sweep = old.sweep; }
+    try { await saveRes((cfg.res || []).filter(function(x){ return x.id !== r.id; }).map(function(x){ return r.sweep && x.sweep ? Object.assign({}, x, {sweep:""}) : x; }).concat([r])); $("res-dlg").close(); }
     catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
   });
   $("r-del").addEventListener("click", async function(){ try { await saveRes((cfg.res || []).filter(function(x){ return x.id !== resId; })); $("res-dlg").close(); } catch(e){} });
@@ -949,7 +978,7 @@ body.has-tabs main{padding-bottom:96px}
     if (b.dataset.resEdit){ openRes(b.dataset.resEdit); return; }
     var id = b.dataset.resPay || b.dataset.resUndo; if (!id) return;
     try { await saveRes((cfg.res || []).map(function(x){ if (x.id !== id) return x; var p = (x.paid || []).filter(function(q){ return q.d.slice(0,7) !== month; });
-      if (b.dataset.resPay) p.push({d:month === today().slice(0,7) ? today() : month + "-" + pad(Math.min(x.day, daysIn(month))), a:x.amount}); return Object.assign({}, x, {paid:p}); })); } catch(e){}
+      if (b.dataset.resPay) p.push({d:month === today().slice(0,7) ? today() : month + "-" + pad(Math.min(x.day, daysIn(month))), a:x.every === 1 ? Math.round(Math.max(0, resSaved(Object.assign({}, x, {paid:p}), month)) * 100) / 100 : x.amount}); return Object.assign({}, x, {paid:p}); })); } catch(e){}
   });
 
   /* ---------- تسوية التجاوز ---------- */

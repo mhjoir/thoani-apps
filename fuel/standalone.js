@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "49";
+var VERSION = "50";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1235,7 +1235,7 @@ msPush();
       t = "تفاصيل الحد اليومي";
       if (s && s.d === det.today && s.dayLimit != null){
         var rows = (s.dayRows || []).slice().sort(function(a, b){ return b.s - a.s; });
-        h = '<ul>' + li("ميزانية الشهر", "", n2(s.income) + " ريال") + li("المحسوب على الأيام السابقة", "", n2(s.before || 0) + " ريال") + li("الأيام الباقية ومنها اليوم", "", String(s.daysLeft)) + li("الحد اليومي", "(الميزانية − السابق) ÷ الأيام الباقية", n2(s.dayLimit) + " ريال", "sum") + '</ul>' + weekHtml(s) +
+        h = '<ul>' + li("ميزانية الشهر", "", n2(s.income) + " ريال") + li("المحسوب على الأيام السابقة", "", n2(s.before || 0) + " ريال") + (s.swept > 0 ? li("وفر الأيام السابقة", "حُوّل إلى «" + s.sweepN + "» وحُسب كأنه صُرف", n2(s.swept) + " ريال") : "") + li("الأيام الباقية ومنها اليوم", "", String(s.daysLeft)) + li("الحد اليومي", "(الميزانية − السابق) ÷ الأيام الباقية", n2(s.dayLimit) + " ريال", "sum") + '</ul>' + weekHtml(s) +
           '<h2 style="margin-top:16px;font-size:1.05rem">المحسوب على اليوم</h2>' + (rows.length ? '<ul>' + rows.map(function(r){
             return li(r.n, r.k > 1 ? "من " + n2(r.a) + " ريال بتاريخ " + dm(r.d) + " · اليوم " + r.i + " من " + r.k : "مدفوع اليوم", n2(r.s)); }).join("") +
             li("المجموع", "", n2(s.daySpent) + " ريال", "sum") + li(s.dayLimit - s.daySpent < 0 ? "تجاوز" : "الباقي لليوم", "", n2(Math.abs(s.dayLimit - s.daySpent)) + " ريال", s.dayLimit - s.daySpent < 0 ? "sum bad" : "sum") + '</ul>' : '<p>لا شيء محسوب على اليوم.</p>') +
@@ -1246,7 +1246,7 @@ msPush();
       t = "تفاصيل حد الشهر";
       if (s){
         h = '<ul>' + (s.cats || []).filter(function(c){ return c.s > 0 || c.l > 0; }).map(function(c){ var over = c.s - c.l > 0.005; return li(c.n, "الحد " + n2(c.l) + (over ? " · تجاوز " + n2(c.s - c.l) : " · الباقي " + n2(c.l - c.s)), n2(c.s), over ? "bad" : ""); }).join("") +
-          li("مجموع المصروف", "", n2(s.spent) + " ريال", "sum") + (s.res || []).map(function(r){ return li("محجوز: " + r.n, r.per > 0 ? "المحجوز " + n2(r.saved) + " من " + n2(r.a) + " · يحل " + dm(r.due) : "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + " · يحل " + dm(r.due), r.per > 0 ? n2(r.per) : "—"); }).join("") + li("ميزانية الشهر", (s.res || []).some(function(r){ return r.per > 0; }) ? "بعد خصم المحجوز" : s.from ? "تُحسب من " + dm(s.from) : "", n2(s.income) + " ريال", "sum") + li(s.left < 0 ? "تجاوز" : "الباقي", "", n2(Math.abs(s.left)) + " ريال", s.left < 0 ? "sum bad" : "sum") + '</ul>';
+          (s.swept > 0 ? li("وفر الأيام المحوَّل", "إلى «" + s.sweepN + "»", n2(s.swept)) : "") + li("مجموع المصروف", "", n2(s.spent) + " ريال", "sum") + (s.res || []).map(function(r){ var du = r.due ? " · يحل " + dm(r.due) : ""; return li("محجوز: " + r.n, r.per > 0 || r.saved > 0 ? "المحجوز " + n2(r.saved) + (r.e === 1 ? "" : " من " + n2(r.a)) + du : "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + du, r.per > 0 ? n2(r.per) : "—"); }).join("") + li("ميزانية الشهر", (s.res || []).some(function(r){ return r.per > 0; }) ? "بعد خصم المحجوز" : s.from ? "تُحسب من " + dm(s.from) : "", n2(s.income) + " ريال", "sum") + li(s.left < 0 ? "تجاوز" : "الباقي", "", n2(Math.abs(s.left)) + " ريال", s.left < 0 ? "sum bad" : "sum") + '</ul>';
       } else h = none;
     } else if (kind === "stock"){
       t = "مدة كفاية المشتريات";
