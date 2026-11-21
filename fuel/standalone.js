@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "62";
+var VERSION = "63";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1470,6 +1470,9 @@ msPush();
 
   function rHome(){
     var s = sum(), h = '<div><h1>دفتر المصروف</h1><p class="sub">' + esc(dayName(todayS()) === "اليوم" ? new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {weekday:"long", day:"numeric", month:"long"}).format(new Date()) : "") + '</p></div>';
+    /* تنبيه يومي أعلى الصفحة: من 4:30 عصراً حتى تُسجَّل قراءة العداد */
+    var due = false; try { due = S.odoDue(); } catch(e){}
+    if (due) h += '<button type="button" class="al w" data-odo="1">' + ico(I.gauge) + '<span>يلزم تسجيل ممشى اليوم ليُحسب كم يكفي البنزين</span>' + ico(I.chev, 18) + '</button>';
     if (!s){ return h + '<div class="card"><span class="sub">المتاح اليوم</span><div class="big"><b>—</b><span>ريال</span></div><p class="sub">جارٍ تحميل البيانات…</p></div>'; }
     var L = Number(s.dayLimit) || 0, sp = Number(s.daySpent) || 0, left = L - sp, pc = L > 0 ? Math.min(100, sp / L * 100) : (sp > 0 ? 100 : 0), over = left < -0.005;
     var pd = Number(s.dayPaid) || 0, ppc = L > 0 ? Math.min(100, pd / L * 100) : (pd > 0 ? 100 : 0), pov = L - pd < -0.005;
@@ -1489,10 +1492,8 @@ msPush();
       return '<div class="row"><span class="t"><b>' + esc(r.n) + '</b><small>' + esc(sub) + '</small></span>' + (r.now && r.e !== 1 ? '<span class="pill w">حلّ موعده</span>' : '') + '<span class="v">' + n0(r.saved) + '</span></div>'; }).join("") + '</button>';
     var st = s.stock || [], miss = st.filter(function(x){ return x.left <= 0; }).length, fuel = st.find(function(x){ return x.car && x.n === "بنزين"; });
     if (miss) h += '<button type="button" class="al w" data-go="shop">' + ico(I.alert) + '<span>' + (miss === 1 ? "سلعة واحدة ناقصة" : miss === 2 ? "سلعتان ناقصتان" : miss + (miss > 10 ? " سلعة ناقصة" : " سلع ناقصة")) + ' للشراء</span>' + ico(I.chev, 18) + '</button>';
-    /* تنبيه يومي: من 4:30 عصراً حتى تُسجَّل قراءة العداد يتحول سطر البنزين إلى طلب تسجيل الممشى */
-    var due = false; try { due = S.odoDue(); } catch(e){}
-    if (due) h += '<button type="button" class="al w" data-odo="1">' + ico(I.gauge) + '<span>يلزم تسجيل ممشى اليوم' + (fuel ? ' ليُحسب كم يكفي البنزين' : '') + '</span>' + ico(I.chev, 18) + '</button>';
-    else if (fuel) h += '<button type="button" class="al" data-det="since"><span class="ic">' + ico(I.fuel) + '</span><span><b>البنزين</b> ' + (fuel.left > 0 ? "يكفي " + days(fuel.left) + " تقريباً" : "انتهت مدته المقدّرة") + '</span>' + ico(I.chev, 18) + '</button>';
+    /* سطر البنزين يبقى في مكانه؛ تنبيه تسجيل الممشى صار أعلى الصفحة */
+    if (fuel) h += '<button type="button" class="al" data-det="since"><span class="ic">' + ico(I.fuel) + '</span><span><b>البنزين</b> ' + (fuel.left > 0 ? "يكفي " + days(fuel.left) + " تقريباً" : "انتهت مدته المقدّرة") + '</span>' + ico(I.chev, 18) + '</button>';
     if (!lsGet(SYNCKEY)) h += '<button type="button" class="al" data-sync="1"><span class="ic">' + ico(I.cloud) + '</span><span>بياناتك على هذا الجهاز فقط. فعّل النسخ الاحتياطي.</span>' + ico(I.chev, 18) + '</button>';
     return h;
   }
