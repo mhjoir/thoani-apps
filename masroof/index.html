@@ -342,7 +342,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 43;
+  var VERSION = 44;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -454,6 +454,20 @@ body.has-tabs main{padding-bottom:96px}
     }
     /* توزيع الحدود بعد الحجز (بطلب صاحب التطبيق 21 نوفمبر): الإيجار يغطيه الحجز، والـ500 للديون من الادخار والمتفرقات. لا يُمسّ حدٌّ عُدّل يدوياً */
     /* القسط الدوري: نوفمبر وما قبله مدّخر خارج البرنامج، والخصم يبدأ من ديسمبر كاملاً */
+    /* نوفمبر 2026: بنزين السيارة دُفع قبل بدء البرنامج، فلا يُخصَّص له مبلغ. ما كان مخصصاً له وحُوّل إلى بنود أخرى يصير جزءاً من حدود تلك البنود مباشرة */
+    else if (cfg.resInit === 6){
+      var mo = cfg.months && cfg.months["2026-11"], fcat = cfg.cats.find(function(x){ return x.id === "fuel"; }) || cfg.cats.find(function(x){ return /بنزين|وقود/.test(x.name); }), nxt = {resInit:7};
+      if (mo && fcat && Number(mo.limits && mo.limits[fcat.id]) > 0){
+        var lim = Object.assign({}, mo.limits), keep = 0, isCat = function(id){ return cfg.cats.some(function(x){ return x.id === id; }); };
+        nxt.adjs = (cfg.adjs || []).filter(function(a){
+          if (a.m !== "2026-11" || a.t === "extra" || a.from !== fcat.id) return true;
+          if (a.t === "move" && a.to !== fcat.id && isCat(a.to)){ lim[a.to] = (Number(lim[a.to]) || 0) + a.amount; return false; }
+          keep += a.amount; return true; });
+        if (keep > 0) lim[fcat.id] = keep; else delete lim[fcat.id];
+        var mm = Object.assign({}, cfg.months); mm["2026-11"] = Object.assign({}, mo, {limits:lim}); nxt.months = mm;
+      }
+      c = Object.assign({}, cfg, nxt);
+    }
     else if (cfg.resInit === 5) c = Object.assign({}, cfg, {resInit:6, res:(cfg.res || []).map(function(r){
       return now === "2026-11" && r.every !== 1 && r.ded === now ? Object.assign({}, r, {ded:"2026-12", dd:""}) : r; })});
     else if (cfg.resInit === 4){
@@ -506,7 +520,7 @@ body.has-tabs main{padding-bottom:96px}
     }
     /* أوزان فروع بند الطعام ومستلزمات البيت (طعام، مستلزمات، بقالة) */
     if (v.subs && typeof v.subs === "object"){ var sw = {}; ["t","h","b"].forEach(function(k){ var n = Number(v.subs[k]); sw[k] = n > 0 ? n : 0; }); if (sw.t + sw.h + sw.b > 0) out.subs = sw; }
-    if (v.resInit) out.resInit = Math.max(1, Math.min(6, Math.round(Number(v.resInit)) || 1));
+    if (v.resInit) out.resInit = Math.max(1, Math.min(7, Math.round(Number(v.resInit)) || 1));
     /* تسويات التجاوز: نقل من بند إلى بند، أو مبلغ خارجي غير الراتب */
     if (Array.isArray(v.adjs)){
       out.adjs = v.adjs.filter(function(a){ return a && a.id && /^\d{4}-\d{2}$/.test(String(a.m)) && (a.t === "move" || a.t === "extra" || a.t === "res" || a.t === "free") && a.to && Number(a.amount) > 0; })
