@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "63";
+var VERSION = "64";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1391,9 +1391,10 @@ msPush();
     "#v2{position:fixed;top:0;left:0;right:0;bottom:calc(72px + env(safe-area-inset-bottom));z-index:6;background:var(--b);color:var(--i);overflow:auto;font-size:15px;line-height:1.5}" +
     "#v2 .in{max-width:560px;margin:0 auto;padding:calc(22px + env(safe-area-inset-top)) 18px 34px;display:flex;flex-direction:column;gap:14px}" +
     "#v2 h1{margin:0;font-size:26px;font-weight:700;line-height:1.3;color:var(--i)}#v2 .sub{margin:0;color:var(--m);font-size:14px}" +
-    "#v2 .card{background:var(--s);border:1px solid var(--l);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px}" +
+    "#v2 .card{background:var(--s);border:1px solid var(--l);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}" +
+    "#v2 .f3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}#v2 .tl{font:inherit;color:inherit;text-align:start;cursor:pointer;background:var(--b);border:1px solid var(--l);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}#v2 .tl b{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--a)}#v2 .tl small{font-size:12px;color:var(--m)}" +
     "#v2 button.card{font:inherit;color:inherit;text-align:start;cursor:pointer;width:100%}" +
-    "#v2 .big{display:flex;align-items:baseline;gap:8px}#v2 .big b{font-size:64px;font-weight:700;line-height:1.05;color:var(--a);font-variant-numeric:tabular-nums}#v2 .big.over b{color:var(--w)}#v2 .big span{font-size:18px;color:var(--m)}" +
+    "#v2 .big{display:flex;align-items:baseline;gap:8px}#v2 .big b{font-size:40px;font-weight:700;line-height:1.05;color:var(--a);font-variant-numeric:tabular-nums}#v2 .big.over b{color:var(--w)}#v2 .big span{font-size:15px;color:var(--m)}" +
     "#v2 .pb{height:10px;border-radius:5px;background:var(--l);overflow:hidden}#v2 .pb i{display:block;height:100%;border-radius:5px;background:var(--a)}#v2 .pb.over i{background:var(--w)}#v2 .pb.sec{margin-top:14px}" +
     "#v2 .two{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--m)}#v2 .two b{color:var(--i);font-variant-numeric:tabular-nums}#v2 .lnk{color:var(--a);font-weight:600}" +
     "#v2 .al{display:flex;align-items:center;gap:12px;border-radius:16px;padding:14px 16px;font:inherit;text-align:start;cursor:pointer;width:100%;background:var(--s);border:1px solid var(--l);color:var(--i)}" +
@@ -1493,7 +1494,12 @@ msPush();
     var st = s.stock || [], miss = st.filter(function(x){ return x.left <= 0; }).length, fuel = st.find(function(x){ return x.car && x.n === "بنزين"; });
     if (miss) h += '<button type="button" class="al w" data-go="shop">' + ico(I.alert) + '<span>' + (miss === 1 ? "سلعة واحدة ناقصة" : miss === 2 ? "سلعتان ناقصتان" : miss + (miss > 10 ? " سلعة ناقصة" : " سلع ناقصة")) + ' للشراء</span>' + ico(I.chev, 18) + '</button>';
     /* سطر البنزين يبقى في مكانه؛ تنبيه تسجيل الممشى صار أعلى الصفحة */
-    if (fuel) h += '<button type="button" class="al" data-det="since"><span class="ic">' + ico(I.fuel) + '</span><span><b>البنزين</b> ' + (fuel.left > 0 ? "يكفي " + days(fuel.left) + " تقريباً" : "انتهت مدته المقدّرة") + '</span>' + ico(I.chev, 18) + '</button>';
+    /* إحصائية البنزين: مصروف الشهر، ممشى الشهر، الممشى منذ آخر تعبئة (من إحصاءات قسم السيارة) */
+    var hv = function(id){ var e = document.getElementById(id); return e ? String(e.textContent || "").trim() : ""; }, fv = hv("hs-fuel"), kv = hv("hs-km"), sv = hv("hs-since");
+    if ((fv && fv !== "—") || (kv && kv !== "—") || (sv && sv !== "—") || fuel) h += '<div class="card"><div class="hd"><b>البنزين</b><span class="sub">' + (fuel ? (fuel.left > 0 ? "يكفي " + days(fuel.left) + " تقريباً" : "انتهت مدته المقدّرة") : "") + '</span></div><div class="f3">' +
+      '<button type="button" class="tl" data-det="fuel"><b>' + esc(fv || "—") + '</b><small>مصروف الشهر (ريال)</small></button>' +
+      '<button type="button" class="tl" data-det="km"><b>' + esc(kv || "—") + '</b><small>ممشى الشهر (كم)</small></button>' +
+      '<button type="button" class="tl" data-det="since"><b>' + esc(sv || "—") + '</b><small>منذ آخر تعبئة (كم)</small></button></div></div>';
     if (!lsGet(SYNCKEY)) h += '<button type="button" class="al" data-sync="1"><span class="ic">' + ico(I.cloud) + '</span><span>بياناتك على هذا الجهاز فقط. فعّل النسخ الاحتياطي.</span>' + ico(I.chev, 18) + '</button>';
     return h;
   }
