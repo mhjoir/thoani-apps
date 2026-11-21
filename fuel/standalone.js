@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "61";
+var VERSION = "62";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1474,9 +1474,10 @@ msPush();
     var L = Number(s.dayLimit) || 0, sp = Number(s.daySpent) || 0, left = L - sp, pc = L > 0 ? Math.min(100, sp / L * 100) : (sp > 0 ? 100 : 0), over = left < -0.005;
     var pd = Number(s.dayPaid) || 0, ppc = L > 0 ? Math.min(100, pd / L * 100) : (pd > 0 ? 100 : 0), pov = L - pd < -0.005;
     h += '<button type="button" class="card" data-det="day"><span class="sub">' + (over ? "تجاوزت حد اليوم بـ" : "المتاح اليوم") + '</span><div class="big' + (over ? " over" : "") + '"><b>' + n0(Math.abs(left)) + '</b><span>ريال</span></div>' +
-      '<div class="pb' + (over ? " over" : "") + '"><i data-w="' + pc + '"></i></div><div class="two"><span>المحسوب على اليوم <b>' + n0(sp) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div>' +
-      /* خط مستقل للمدفوع فعلياً اليوم: ما خرج من الجيب بتاريخ اليوم، قبل توزيعه على الأيام */
-      '<div class="pb sec' + (pov ? " over" : "") + '"><i data-w="' + ppc + '"></i></div><div class="two"><span>المدفوع فعلياً <b>' + n0(pd) + '</b> من ' + n0(L) + '</span><span>' + (pov ? "تجاوز " : "المتبقي ") + '<b>' + n0(Math.abs(L - pd)) + '</b></span></div></button>';
+      '<div class="pb' + (over ? " over" : "") + '"><i data-w="' + pc + '"></i></div><div class="two"><span>المحسوب على اليوم <b>' + n0(sp) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div></button>' +
+      /* بطاقة مستقلة للمتبقي فعلياً اليوم: الحد اليومي ناقص ما خرج من الجيب بتاريخ اليوم قبل توزيعه على الأيام */
+      '<button type="button" class="card" data-det="day"><span class="sub">' + (pov ? "تجاوزت فعلياً حد اليوم بـ" : "المتبقي فعلياً اليوم") + '</span><div class="big' + (pov ? " over" : "") + '"><b>' + n0(Math.abs(L - pd)) + '</b><span>ريال</span></div>' +
+      '<div class="pb' + (pov ? " over" : "") + '"><i data-w="' + ppc + '"></i></div><div class="two"><span>المدفوع فعلياً <b>' + n0(pd) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div></button>';
     var inc = Number(s.income) || 0, ms = Number(s.spent) || 0, ml = inc - ms, mp = inc > 0 ? Math.min(100, ms / inc * 100) : 0, mo = ml < -0.005;
     h += '<button type="button" class="card" data-det="mon"><div class="hd"><span class="sub">' + (mo ? "تجاوزت ميزانية الشهر بـ" : "المتاح هذا الشهر") + '</span><span class="sub">باقي ' + days(s.daysLeft) + '</span></div><div class="big' + (mo ? " over" : "") + '"><b>' + n0(Math.abs(ml)) + '</b><span>ريال</span></div>' +
       '<div class="pb' + (mo ? " over" : "") + '"><i data-w="' + mp + '"></i></div><div class="two"><span>صرفت <b>' + n0(ms) + '</b> من ' + n0(inc) + '</span><span class="lnk">التفاصيل</span></div></button>';
