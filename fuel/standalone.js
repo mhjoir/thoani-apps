@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "52";
+var VERSION = "53";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1460,8 +1460,8 @@ msPush();
     h += '<button type="button" class="card" data-det="day"><span class="sub">' + (over ? "تجاوزت حد اليوم بـ" : "المتاح اليوم") + '</span><div class="big' + (over ? " over" : "") + '"><b>' + n0(Math.abs(left)) + '</b><span>ريال</span></div>' +
       '<div class="pb' + (over ? " over" : "") + '"><i data-w="' + pc + '"></i></div><div class="two"><span>صرفت <b>' + n0(sp) + '</b> من ' + n0(L) + '</span><span class="lnk">التفاصيل</span></div></button>';
     var inc = Number(s.income) || 0, ms = Number(s.spent) || 0, ml = inc - ms, mp = inc > 0 ? Math.min(100, ms / inc * 100) : 0, mo = ml < -0.005;
-    h += '<button type="button" class="card" data-det="mon"><div class="hd"><b>هذا الشهر</b><span class="sub">باقي ' + days(s.daysLeft) + '</span></div><div class="pb' + (mo ? " over" : "") + '"><i data-w="' + mp + '"></i></div>' +
-      '<div class="two"><span>المصروف <b>' + n0(ms) + '</b></span><span>' + (mo ? "تجاوز" : "المتاح") + ' <b>' + n0(Math.abs(ml)) + '</b> من ' + n0(inc) + '</span></div></button>';
+    h += '<button type="button" class="card" data-det="mon"><div class="hd"><span class="sub">' + (mo ? "تجاوزت ميزانية الشهر بـ" : "المتاح هذا الشهر") + '</span><span class="sub">باقي ' + days(s.daysLeft) + '</span></div><div class="big' + (mo ? " over" : "") + '"><b>' + n0(Math.abs(ml)) + '</b><span>ريال</span></div>' +
+      '<div class="pb' + (mo ? " over" : "") + '"><i data-w="' + mp + '"></i></div><div class="two"><span>صرفت <b>' + n0(ms) + '</b> من ' + n0(inc) + '</span><span class="lnk">التفاصيل</span></div></button>';
     /* المحجوز: قسط الإيجار وسداد الديون وما شابههما */
     var rs = s.res || [];
     if (rs.length) h += '<button type="button" class="card g2" data-res="1"><div class="hd"><b>المحجوز</b><span class="lnk">إدارة</span></div>' + rs.map(function(r){
