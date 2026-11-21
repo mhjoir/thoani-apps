@@ -304,7 +304,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 31;
+  var VERSION = 32;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -400,7 +400,7 @@ body.has-tabs main{padding-bottom:96px}
       if (r.id === "debt") return Object.assign({}, r, {start:now});
       return r; })});
     /* حجوزات أُدخلت يدوياً ببداية مؤجلة: تبدأ من 21 نوفمبر كما طلب صاحب التطبيق، وحصص ما قبلها من القسط الدوري تُعتبر مدّخرة */
-    else if (cfg.res && cfg.resInit !== 4){
+    else if (cfg.res && !(cfg.resInit >= 4)){
       var list = cfg.res;
       if (now === "2026-11"){
         list = list.map(function(r){
@@ -411,6 +411,11 @@ body.has-tabs main{padding-bottom:96px}
         if (!list.some(function(r){ return r.sweep; })){ var mi = -1; list.forEach(function(r, i){ if (mi < 0 && r.every === 1) mi = i; }); if (mi >= 0) list = list.map(function(r, i){ return i === mi ? Object.assign({}, r, {sweep:today()}) : r; }); }
       }
       c = Object.assign({}, cfg, {resInit:4, res:list});
+    }
+    /* توزيع الحدود بعد الحجز (بطلب صاحب التطبيق 21 نوفمبر): الإيجار يغطيه الحجز، والـ500 للديون من الادخار والمتفرقات. لا يُمسّ حدٌّ عُدّل يدوياً */
+    else if (cfg.resInit === 4){
+      var want = {rent:[1042, 0], save:[300, 0], misc:[290, 90]};
+      c = Object.assign({}, cfg, {resInit:5, cats:cfg.cats.map(function(x){ var w = want[x.id]; return w && x.limit === w[0] ? Object.assign({}, x, {limit:w[1]}) : x; })});
     }
     if (c && (c = cleanCfg(c))){ cfg = c; saveLocal(); seedRes(); }
   }
@@ -456,7 +461,7 @@ body.has-tabs main{padding-bottom:96px}
       var swSeen = false; v.res.forEach(function(r){ var o = r && rs.find(function(x){ return x.id === String(r.id); }); if (o && !swSeen && /^\d{4}-\d\d-\d\d$/.test(String(r.sweep || ""))){ o.sweep = String(r.sweep); swSeen = true; } });
       if (rs.length) out.res = rs;
     }
-    if (v.resInit) out.resInit = Math.max(1, Math.min(4, Math.round(Number(v.resInit)) || 1));
+    if (v.resInit) out.resInit = Math.max(1, Math.min(5, Math.round(Number(v.resInit)) || 1));
     /* تسويات التجاوز: نقل من بند إلى بند، أو مبلغ خارجي غير الراتب */
     if (Array.isArray(v.adjs)){
       out.adjs = v.adjs.filter(function(a){ return a && a.id && /^\d{4}-\d{2}$/.test(String(a.m)) && (a.t === "move" || a.t === "extra") && a.to && Number(a.amount) > 0; })
