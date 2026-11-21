@@ -1499,6 +1499,7 @@ msPush();
     if (r.x) h += '<p class="note">مصروف سيارة: تعديله من صفحة السيارة، والمدة تقديرية تُحسب تلقائياً.</p>';
     $("v2-row-h").textContent = r.n; $("v2-row-b").innerHTML = h; $("v2-row-edit").textContent = r.x ? "فتح صفحة السيارة" : "تعديل";
     try { rd.showModal(); } catch(e){ rd.setAttribute("open", ""); }
+    rd.scrollTop = 0;
   }
   rd.addEventListener("click", function(ev){
     if (ev.target.closest("#v2-row-x")){ rd.close(); return; }
