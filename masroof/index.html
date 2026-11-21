@@ -220,6 +220,7 @@ body.has-tabs main{padding-bottom:96px}
     <div class="f"><label for="a-amt">المبلغ (ريال)</label><input type="text" inputmode="decimal" id="a-amt" autocomplete="off" placeholder="0"></div>
     <div class="f"><label for="a-date">التاريخ</label><input type="date" id="a-date"></div>
     <div class="f"><label for="a-note">ملاحظة (اختياري)</label><input type="text" id="a-note" maxlength="80" autocomplete="off"></div>
+    <label class="opt" id="a-part-f" hidden><input type="checkbox" id="a-part"> <span id="a-part-t"></span></label>
     <p class="msg warn" id="a-warn" hidden></p>
     <div class="f" id="a-cover-f" hidden><label>غطِّ العجز من البنود (بند أو أكثر حتى تكتمل التغطية)</label><div id="a-cover-l"></div><p class="hint" id="a-cover-s" style="margin:6px 0 0;font-size:.9rem;font-weight:600"></p></div>
     <div class="row"><button type="submit" class="btn primary" id="a-save">حفظ</button><button type="button" class="btn" id="a-cancel">إلغاء</button></div>
@@ -318,7 +319,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 36;
+  var VERSION = 37;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -804,7 +805,7 @@ body.has-tabs main{padding-bottom:96px}
     $("log-empty").hidden = rows.length > 0;
     $("log").innerHTML = rows.map(function(e){
       var c = cats.find(function(x){ return x.id === e.cat; });
-      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") : "") + (e.days > 1 ? " · " + (e.item || e.ext ? "تكفي " : "يغطي ") + daysWord(e.days) : "") + (e.note ? " · " + esc(e.note) : "") + '</span></span>' +
+      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") : "") + (e.days > 1 ? " · " + (e.item || e.ext ? "تكفي " : "يغطي ") + daysWord(e.days) : "") + (e.note ? " · " + esc(e.note) : "") + (e.full > e.amount ? " · من أصل " + fmt(e.full) + "، والباقي خارج ميزانية الشهر" : "") + '</span></span>' +
         '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<span class="acts"><button type="button" class="btn sm" data-edit="' + esc(e.id) + '">تعديل</button><button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button></span>') + '</li>';
     }).join("") + resPays(month).map(function(p){
       return '<li><span class="what"><b>' + esc(p.n) + '</b><span>' + esc(dayFmt.format(dateOf(p.d))) + ' · سداد من المحجوز، لا يُحسب على مصروف الشهر</span></span><span class="amt">' + fmt(p.a) + '</span><span class="pill ok">من المحجوز</span></li>'; }).join("");
@@ -839,7 +840,7 @@ body.has-tabs main{padding-bottom:96px}
       var v = JSON.stringify({m:m, income:Math.round(inc * 100) / 100, spent:Math.round(sp * 100) / 100, left:Math.round((inc - sp) * 100) / 100, from:E.from, d:td, dayLimit:Math.round(dl * 100) / 100, daySpent:Math.round(dsp * 100) / 100, daysLeft:daysLeft, before:Math.round(before * 100) / 100, dayPaid:Math.round(paid * 100) / 100, rmv:Math.round(resMoved(m, null) * 100) / 100, swept:Math.round(swp * 100) / 100, sweepN:swr ? swr.n : "", dayRows:dayRows, week:wk.slice(0, Math.min(7, daysLeft)).map(function(x){ return Math.round(x * 100) / 100; }), stock:stockRows, res:((cfg && cfg.res) || []).map(function(r){ var x = resInfo(r, m); return {n:r.n, a:r.amount, per:Math.round(x.per * 100) / 100, saved:Math.round(Math.max(0, x.saved) * 100) / 100, due:x.due, st:r.start, e:r.every, pre:Math.round(resPre(r) * 100) / 100, sw:r.sweep ? 1 : 0, now:x.now ? 1 : 0}; }), ver:VERSION,
         rows:expenses.concat(fuelRows).filter(function(e){ return e.date.slice(0,7) === m && (!E.from || e.date >= E.from); }).sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : String(b.at || "") < String(a.at || "") ? -1 : 1; }).map(function(e){
           var c2 = cfg.cats.find(function(x){ return x.id === e.cat; }), i2 = e.item ? itemOf(e.item) : null;
-          return {id:e.id, n:e.ext ? (e.lbl || "السيارة") : i2 ? i2.n + (e.qty ? " " + qtyFmt(e.qty) + " " + (e.unit || i2.u) : "") : (e.note || (c2 ? c2.name : "مصروف")), c:c2 ? c2.name : "", a:e.amount, d:e.date, k:e.days > 1 ? Math.round(e.days) : 1, x:e.ext ? 1 : 0}; }).concat(resPays(m).map(function(p){ return {id:p.id, n:p.n, c:"سداد من المحجوز", a:p.a, d:p.d, k:1, x:0, r:1}; })).sort(function(a, b){ return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; }),
+          return {id:e.id, n:e.ext ? (e.lbl || "السيارة") : i2 ? i2.n + (e.qty ? " " + qtyFmt(e.qty) + " " + (e.unit || i2.u) : "") : (e.note || (c2 ? c2.name : "مصروف")), c:c2 ? c2.name : "", a:e.amount, d:e.date, k:e.days > 1 ? Math.round(e.days) : 1, x:e.ext ? 1 : 0, f:e.full > e.amount ? e.full : 0}; }).concat(resPays(m).map(function(p){ return {id:p.id, n:p.n, c:"سداد من المحجوز", a:p.a, d:p.d, k:1, x:0, r:1}; })).sort(function(a, b){ return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; }),
         cats:cfg.cats.map(function(c){ return {n:c.name, s:Math.round(spentIn(m, c.id) * 100) / 100, l:Math.round(limitOf(m, c) * 100) / 100}; })});
       if (localStorage.getItem("masroof-summary") !== v) localStorage.setItem("masroof-summary", v);
     } catch(e){}
@@ -886,10 +887,11 @@ body.has-tabs main{padding-bottom:96px}
     openAdd(e.cat);
     editId = id; $("add-h").textContent = "تعديل مصروف"; $("a-save").textContent = "حفظ التعديل";
     if (cfg.cats.some(function(c){ return c.id === e.cat; })) $("a-cat").value = e.cat;
-    $("a-date").value = e.date; $("a-amt").value = e.amount; $("a-note").value = e.note || "";
+    $("a-date").value = e.date; $("a-amt").value = e.full > e.amount ? e.full : e.amount; $("a-note").value = e.note || "";
     $("a-item").value = e.item && itemOf(e.item) && e.cat === ITEM_CAT ? e.item : ""; itemDraw(false);
     if (e.qty) $("a-qty").value = e.qty;
     daysManual = true; $("a-days").value = e.days >= 1 ? Math.round(e.days) : 1; itemCalc(); room();
+    $("a-part-f").hidden = true; partDraw(); if (!$("a-part-f").hidden) $("a-part").checked = e.full > e.amount;
   }
   function openAdd(catId){
     editId = null; $("add-h").textContent = "تسجيل مصروف";
@@ -897,7 +899,7 @@ body.has-tabs main{padding-bottom:96px}
     if (catId && carLocked(catId)){ open($("car-dlg")); return; }
     $("a-cat").innerHTML = cfg.cats.filter(function(c){ return !carLocked(c.id); }).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join("");
     if (catId) $("a-cat").value = catId;
-    $("a-amt").value = ""; $("a-note").value = "";
+    $("a-amt").value = ""; $("a-note").value = ""; $("a-part-f").hidden = true;
     $("a-item").innerHTML = '<option value="">بدون صنف (مصروف عام)</option>' + ["الطعام", "مستلزمات البيت"].map(function(g){
       return '<optgroup label="' + g + '">' + CATALOG.filter(function(x){ return x.g === g; }).map(function(x){ return '<option value="' + x.id + '">' + esc(x.n) + '</option>'; }).join("") + '</optgroup>'; }).join("");
     $("a-item").value = ""; itemDraw(true);
@@ -934,9 +936,19 @@ body.has-tabs main{padding-bottom:96px}
   $("a-item").addEventListener("change", function(){ $("a-stock-add").checked = true; itemDraw(); });
   $("a-stock-box").addEventListener("change", function(){ itemCalc(); });
   $("a-qty").addEventListener("input", function(){ daysManual = false; itemCalc(); });
-  $("a-days").addEventListener("input", function(){ daysManual = true; itemCalc(); });
+  $("a-days").addEventListener("input", function(){ daysManual = true; itemCalc(); resetWarn(); });
+  $("a-part").addEventListener("change", function(){ resetWarn(); });
   $("a-packs").addEventListener("click", function(ev){ var b = ev.target.closest("button[data-q]"); if (!b) return; $("a-qty").value = b.dataset.q; daysManual = false; itemCalc(); });
-  function resetWarn(){ forceOver = false; $("a-warn").hidden = true; $("a-cover-f").hidden = true; covPick = []; covSrc = []; $("a-save").textContent = editId ? "حفظ التعديل" : "حفظ"; }
+  /* ميزانية تبدأ من منتصف الشهر: مصروف يخص مدة أطول من أيام الميزانية الباقية (فاتورة شهر كامل) يُحسب منه نصيب تلك الأيام فقط، والباقي خارج البرنامج */
+  function partW(date){ var m = date.slice(0,7), F = eff(m).from; if (!F) return 0; return dayDiff(date > F ? date : F, m + "-" + pad(daysIn(m))) + 1; }
+  function partDraw(){
+    var f = $("a-part-f"), date = $("a-date").value || today(), d = Math.round(num($("a-days").value)), a = num($("a-amt").value), W = partW(date);
+    var on = W > 0 && d > W && a > 0 && !($("a-cat").value === ITEM_CAT && $("a-item").value);
+    if (on && f.hidden) $("a-part").checked = true;
+    f.hidden = !on;
+    if (on){ var c = Math.round(a * W / d * 100) / 100; $("a-part-t").textContent = "يخص " + d + " يوماً وميزانية هذا الشهر باقٍ منها " + W + (W > 10 ? " يوماً" : " أيام") + ": احسب عليها " + fmt(c) + " ريال فقط، والباقي " + fmt(a - c) + " خارج البرنامج"; }
+  }
+  function resetWarn(){ partDraw(); forceOver = false; $("a-warn").hidden = true; $("a-cover-f").hidden = true; covPick = []; covSrc = []; $("a-save").textContent = editId ? "حفظ التعديل" : "حفظ"; }
   function room(){
     var c = cfg.cats.find(function(x){ return x.id === $("a-cat").value; }), d = $("a-date").value || today(), m = d.slice(0,7);
     var s = spentIn(m, c.id), L = limitOf(m, c), old = editId ? expenses.find(function(x){ return x.id === editId; }) : null;
@@ -970,6 +982,7 @@ body.has-tabs main{padding-bottom:96px}
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)){ w.hidden = false; w.textContent = "حدّد التاريخ."; return; }
     var dAll = Math.round(num($("a-days").value));
     if (!(dAll >= 1)){ w.hidden = false; w.textContent = "حدّد عدد الأيام التي يغطيها هذا المصروف (يوم واحد على الأقل)."; try { $("a-days").focus(); } catch(e){} return; }
+    var fullAmt = amt; if (!$("a-part-f").hidden && $("a-part").checked){ var pw = partW(date); if (pw > 0 && dAll > pw) amt = Math.round(amt * pw / dAll * 100) / 100; }
     var rest = room();
     if (amt > rest + 0.005 && !forceOver){
       forceOver = true; w.hidden = false;
@@ -996,6 +1009,7 @@ body.has-tabs main{padding-bottom:96px}
       if (daysManual && q > 0 && dd >= 1) newRate = q / dd;
     }
     rec.days = Math.min(dAll, 366);
+    if (fullAmt > amt + 0.005) rec.full = Math.round(fullAmt * 100) / 100;
     if (it && !editId && stockRem > 0 && $("a-stock-add").checked) rec.carry = stockRem;
     if (editId){ var oldE = expenses.find(function(x){ return x.id === editId; }); if (oldE && oldE.carry > 0 && it && oldE.item === it.id) rec.carry = oldE.carry; }
     var newCatDays = !it && rec.days !== catDays(rec.cat) ? rec.days : null;

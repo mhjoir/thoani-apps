@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "56";
+var VERSION = "57";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1515,7 +1515,7 @@ msPush();
     var s = sum(), r = s ? (s.rows || []).find(function(x){ return String(x.id) === String(id); }) : null; if (!r) return;
     rowCur = r;
     var p = r.d.split("-"), last = new Date(Number(p[0]), Number(p[1]), 0).getDate(), toEnd = last - Number(p[2]) + 1, span = r.k > 1 ? Math.max(1, Math.min(r.k, toEnd)) : 1, share = r.a / span, t = todayS();
-    var h = '<p class="sub">' + esc((r.x ? "السيارة" : r.c) + " · " + dayName(r.d)) + '</p><ul><li><span>المبلغ المدفوع</span><b>' + n2(r.a) + ' ريال</b></li><li><span>يغطي</span><b>' + days(r.k) + '</b></li>' +
+    var h = '<p class="sub">' + esc((r.x ? "السيارة" : r.c) + " · " + dayName(r.d)) + '</p><ul>' + (r.f ? '<li><span>أصل المبلغ المدفوع</span><b>' + n2(r.f) + ' ريال</b></li><li><span>المحسوب على ميزانية الشهر</span><b>' + n2(r.a) + ' ريال</b></li><li><span>خارج البرنامج</span><b>' + n2(r.f - r.a) + ' ريال</b></li>' : '<li><span>المبلغ المدفوع</span><b>' + n2(r.a) + ' ريال</b></li>') + '<li><span>يغطي</span><b>' + days(r.k) + '</b></li>' +
       (span > 1 ? '<li><span>نصيب اليوم الواحد</span><b>' + n2(Math.round(share * 100) / 100) + ' ريال</b></li>' : '') + '</ul>';
     if (span > 1){
       h += '<h3>الأيام الموزَّع عليها (' + span + ')</h3><ul>';
