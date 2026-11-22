@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "68";
+var VERSION = "69";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1376,6 +1376,7 @@ msPush();
   function dayName(d){ var t = todayS(), y = new Date(); y.setDate(y.getDate() - 1); var ys = y.getFullYear() + "-" + String(y.getMonth() + 1).padStart(2, "0") + "-" + String(y.getDate()).padStart(2, "0");
     if (d === t) return "اليوم"; if (d === ys) return "أمس";
     try { return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {weekday:"long", day:"numeric", month:"long"}).format(new Date(d + "T12:00")); } catch(e){ return d; } }
+  function nxDate(d){ try { return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {weekday:"long", day:"numeric", month:"long"}).format(new Date(d + "T12:00")); } catch(e){ return d; } }
   function ico(p, s){ return '<svg aria-hidden="true" width="' + (s || 22) + '" height="' + (s || 22) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
   var I = {home:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>', cart:'<path d="M3 4h2l2.5 11h10L20 7H6.5"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>',
     list:'<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
@@ -1397,6 +1398,7 @@ msPush();
     "#v2 .in{max-width:560px;margin:0 auto;padding:calc(22px + env(safe-area-inset-top)) 18px 34px;display:flex;flex-direction:column;gap:14px}" +
     "#v2 h1{margin:0;font-size:26px;font-weight:700;line-height:1.3;color:var(--i)}#v2 .sub{margin:0;color:var(--m);font-size:14px}" +
     "#v2 .card{background:var(--s);border:1px solid var(--l);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}" +
+    "#v2 .nx{font:inherit;color:inherit;cursor:pointer;text-align:start;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--b);border:1px solid var(--l);border-radius:12px;padding:10px 12px}#v2 .nx span{display:flex;flex-direction:column;gap:2px;min-width:0}#v2 .nx small{font-size:12px;color:var(--m)}#v2 .nx b{font-size:17px;font-weight:700}#v2 .nx .dd{align-items:center;flex:none}#v2 .nx .dd b{font-size:26px;color:var(--a);font-variant-numeric:tabular-nums;line-height:1}#v2 .nx.w .dd b{color:var(--w)}" +
     "#v2 .f3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}#v2 .tl{font:inherit;color:inherit;text-align:start;cursor:pointer;background:var(--b);border:1px solid var(--l);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}#v2 .tl b{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--a)}#v2 .tl small{font-size:12px;color:var(--m)}" +
     "#v2 button.card{font:inherit;color:inherit;text-align:start;cursor:pointer;width:100%}" +
     "#v2 .big{display:flex;align-items:baseline;gap:8px}#v2 .big b{font-size:40px;font-weight:700;line-height:1.05;color:var(--a);font-variant-numeric:tabular-nums}#v2 .big.over b{color:var(--w)}#v2 .big span{font-size:15px;color:var(--m)}" +
@@ -1502,7 +1504,9 @@ msPush();
     /* سطر البنزين يبقى في مكانه؛ تنبيه تسجيل الممشى صار أعلى الصفحة */
     /* إحصائية البنزين: مصروف الشهر، ممشى الشهر، الممشى منذ آخر تعبئة (من إحصاءات قسم السيارة) */
     var hv = function(id){ var e = document.getElementById(id); return e ? String(e.textContent || "").trim() : ""; }, fv = hv("hs-fuel"), kv = hv("hs-km"), sv = hv("hs-since");
-    if ((fv && fv !== "—") || (kv && kv !== "—") || (sv && sv !== "—") || fuel) h += '<div class="card"><div class="hd"><b>البنزين</b><span class="sub">' + (fuel ? (fuel.left > 0 ? "يكفي " + days(fuel.left) + " تقريباً" : "انتهت مدته المقدّرة") : "") + '</span></div><div class="f3">' +
+    if ((fv && fv !== "—") || (kv && kv !== "—") || (sv && sv !== "—") || fuel) h += '<div class="card"><div class="hd"><b>البنزين</b><span class="sub">تقديري</span></div>' +
+      /* موعد التعبئة القادمة تقديرياً: بالأيام وبالتاريخ (آخر يوم يكفيه البنزين الحالي) */
+      (fuel && fuel.end ? '<button type="button" class="nx' + (fuel.left > 0 ? "" : " w") + '" data-det="since"><span><small>' + (fuel.left > 0 ? "التعبئة القادمة تقريباً" : "حان وقت التعبئة · انتهت المدة المقدّرة") + '</small><b>' + esc(nxDate(fuel.end)) + '</b></span><span class="dd"><b>' + (fuel.left > 0 ? fuel.left : 0) + '</b><small>' + (fuel.left === 1 ? "يوم باقٍ" : fuel.left === 2 ? "يومان باقيان" : fuel.left > 2 && fuel.left <= 10 ? "أيام باقية" : fuel.left > 10 ? "يوماً باقياً" : "يوم باقٍ") + '</small></span></button>' : '') + '<div class="f3">' +
       '<button type="button" class="tl" data-det="fuel"><b>' + esc(fv || "—") + '</b><small>مصروف الشهر (ريال)</small></button>' +
       '<button type="button" class="tl" data-det="km"><b>' + esc(kv || "—") + '</b><small>ممشى الشهر (كم)</small></button>' +
       '<button type="button" class="tl" data-det="since"><b>' + esc(sv || "—") + '</b><small>منذ آخر تعبئة (كم)</small></button></div></div>';
