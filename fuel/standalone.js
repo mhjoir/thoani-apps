@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "69";
+var VERSION = "70";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1500,7 +1500,7 @@ msPush();
       if (!(r.per > 0) && !(r.saved > 0)) sub = "يبدأ الحجز في شهر " + Number(String(r.st).slice(5,7)) + (r.due ? " · يحل " + S.dm(r.due) : r.sw ? " · فائض الأيام من الآن" : "");
       return '<div class="row"><span class="t"><b>' + esc(r.n) + '</b><small>' + esc(sub) + '</small></span>' + (r.now && r.e !== 1 ? '<span class="pill w">حلّ موعده</span>' : '') + '<span class="v">' + n0(r.saved) + '</span></div>'; }).join("") + '</button>';
     var st = s.stock || [], miss = st.filter(function(x){ return x.left <= 0; }).length, fuel = st.find(function(x){ return x.car && x.n === "بنزين"; });
-    if (miss) h += '<button type="button" class="al w" data-go="shop">' + ico(I.alert) + '<span>' + (miss === 1 ? "سلعة واحدة ناقصة" : miss === 2 ? "سلعتان ناقصتان" : miss + (miss > 10 ? " سلعة ناقصة" : " سلع ناقصة")) + ' للشراء</span>' + ico(I.chev, 18) + '</button>';
+    /* لا تنبيه في الرئيسية عن السلع غير المتوفرة: الشراء اختياري وتُتابع من صفحة المشتريات */
     /* سطر البنزين يبقى في مكانه؛ تنبيه تسجيل الممشى صار أعلى الصفحة */
     /* إحصائية البنزين: مصروف الشهر، ممشى الشهر، الممشى منذ آخر تعبئة (من إحصاءات قسم السيارة) */
     var hv = function(id){ var e = document.getElementById(id); return e ? String(e.textContent || "").trim() : ""; }, fv = hv("hs-fuel"), kv = hv("hs-km"), sv = hv("hs-since");
@@ -1515,10 +1515,10 @@ msPush();
   }
   function rShop(){
     var s = sum(), st = s ? (s.stock || []) : [], miss = st.filter(function(x){ return x.left <= 0; }).sort(function(a, b){ return b.left - a.left; }), have = st.filter(function(x){ return x.left > 0; });
-    var h = '<div><h1>المشتريات</h1><p class="sub">ما ينقص البيت وما يكفي</p></div>';
-    h += '<div class="card g2"><div class="hd"><b>للشراء</b><span class="pill' + (miss.length ? " w" : "") + '">' + (miss.length ? miss.length + " ناقص" : "لا شيء") + '</span></div>' + (miss.length ? miss.map(function(x){
+    var h = '<div><h1>المشتريات</h1><p class="sub">المتوفر في البيت وغير المتوفر</p></div>';
+    h += '<div class="card g2"><div class="hd"><b>غير متوفر</b><span class="pill">' + (miss.length ? miss.length : "لا شيء") + '</span></div>' + (miss.length ? '<p class="sub">الشراء اختياري: سجّل شراءً، أو اضغط «متوفر» إن كان عندك دون شراء.</p>' : '') + (miss.length ? miss.map(function(x){
       var sub = x.nv ? "لم يُسجَّل بعد" : x.left === 0 ? "انتهى أمس" : "انتهى منذ " + days(1 - x.left);
-      return '<div class="row"><span class="t"><b>' + esc(x.n) + '</b><small>' + sub + '</small></span>' + (x.id ? '<span class="fx">' + (x.nv && x.once ? '<button type="button" class="bt o" data-have="' + esc(x.id) + '">متوفر</button>' : '') + '<button type="button" class="bt" data-buy="' + esc(x.id) + '">شراء</button></span>' : '<span class="pill w">انتهى</span>') + '</div>'; }).join("") : '<p class="sub">لا توجد سلع ناقصة.</p>') + '</div>';
+      return '<div class="row"><span class="t"><b>' + esc(x.n) + '</b><small>' + sub + '</small></span>' + (x.id ? '<span class="fx">' + '<button type="button" class="bt o" data-have="' + esc(x.id) + '">متوفر</button><button type="button" class="bt" data-buy="' + esc(x.id) + '">شراء</button></span>' : '<span class="pill w">انتهى</span>') + '</div>'; }).join("") : '<p class="sub">كل السلع متوفرة.</p>') + '</div>';
     h += '<div class="card g2"><div class="hd"><b>متوفر</b><span class="pill a">' + (have.length === 1 ? "صنف واحد" : have.length === 2 ? "صنفان" : have.length + (have.length > 10 ? " صنفاً" : " أصناف")) + '</span></div>' + (have.length ? have.map(function(x){
       return '<div class="row"><span class="t"><b>' + esc(x.n + (x.q ? " " + x.q : "")) + '</b><small>' + (x.car ? "تقديراً حتى " : "حتى ") + S.dm(x.end) + '</small></span><span class="pill' + (x.left <= 2 ? " w" : "") + '">' + (x.left === 1 ? "آخر يوم" : days(x.left)) + '</span></div>'; }).join("") : '<p class="sub">لا يوجد صنف مسجّل بعد.</p>') + '</div>';
     return h;

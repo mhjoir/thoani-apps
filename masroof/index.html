@@ -342,7 +342,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 44;
+  var VERSION = 45;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -920,7 +920,7 @@ body.has-tabs main{padding-bottom:96px}
     var td = today(), latest = {};
     expenses.forEach(function(e){ if (e.item && e.days >= 1 && itemOf(e.item) && !itemOf(e.item).ns && e.date <= td && (!latest[e.item] || e.date > latest[e.item].date || (e.date === latest[e.item].date && String(e.at || "") > String(latest[e.item].at || "")))) latest[e.item] = e; });
     var hav = (cfg && cfg.have) || {};
-    Object.keys(hav).forEach(function(k){ var x = hav[k]; if (itemOf(k) && x.date <= td && (!latest[k] || x.date > latest[k].date)) latest[k] = {item:k, date:x.date, days:x.days, hv:true}; });
+    Object.keys(hav).forEach(function(k){ var x = hav[k]; if (itemOf(k) && x.date <= td && (!latest[k] || x.date >= latest[k].date)) latest[k] = {item:k, date:x.date, days:x.days, hv:true}; });
     fuelRows.forEach(function(e){ if (e.key && e.days >= 1 && e.date <= td && (!latest[e.key] || e.date > latest[e.key].date)) latest[e.key] = e; });
     var rows = Object.keys(latest).map(function(k){ var e = latest[k], end = addDays(e.date, Math.round(e.days) + (e.carry > 0 ? Math.round(e.carry) : 0) - 1); return {it:e.ext ? {n:e.lbl, u:""} : itemOf(k), e:e, end:end, left:dayDiff(td, end) + 1, car:!!e.ext}; })
       .filter(function(x){ return x.left > -60; }).sort(function(a, b){ return a.left - b.left; });
@@ -928,11 +928,11 @@ body.has-tabs main{padding-bottom:96px}
     var never = MAIN.filter(function(id){ return !latest[id] && !rows.some(function(x){ return !x.car && x.e.item === id; }); }).map(itemOf).filter(Boolean);
     /* صنف رئيسي اشتُري قديماً وخرج من القائمة (أكثر من 60 يوماً) يُعامل كغير مشترى */
     MAIN.forEach(function(id){ if (latest[id] && !rows.some(function(x){ return !x.car && x.e.item === id; }) && itemOf(id)) never.push(itemOf(id)); });
-    stockRows = stockRows.concat(never.map(function(it){ return {id:it.id, n:it.n, q:"", d:"", end:"", left:-999, car:0, nv:1, once:hav[it.id] ? 0 : 1}; }));
+    stockRows = stockRows.concat(never.map(function(it){ return {id:it.id, n:it.n, q:"", d:"", end:"", left:-999, car:0, nv:1, once:1}; }));
     $("stock-card").hidden = !rows.length && !never.length;
-    $("stock").innerHTML = never.map(function(it){ return '<li><span class="what"><b>' + esc(it.n) + '</b><span>سلعة رئيسية · لم يُسجَّل شراؤها</span></span>' + (hav[it.id] ? '<span class="pill over">ناقص</span>' : '<button type="button" class="btn sm" data-have="' + it.id + '">متوفر عندي</button>') + '</li>'; }).join("") + rows.map(function(x){
+    $("stock").innerHTML = never.map(function(it){ return '<li><span class="what"><b>' + esc(it.n) + '</b><span>سلعة رئيسية · غير مسجّلة · الشراء اختياري</span></span><button type="button" class="btn sm" data-have="' + it.id + '">متوفر عندي</button></li>'; }).join("") + rows.map(function(x){
       var st = x.left <= 0 ? '<span class="pill over">انتهى</span>' : x.left <= 2 ? '<span class="pill near">' + (x.left === 1 ? "آخر يوم" : "باقي يومان") + '</span>' : '<span class="pill ok">باقي ' + daysWord(x.left) + '</span>';
-      return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>' + (x.car ? 'بتاريخ ' : x.e.hv ? 'متوفر من قبل · سُجّل ' : 'اشتُري ') + esc(dayFmt.format(dateOf(x.e.date))) + ' · ' + (x.car ? 'تقديراً حتى ' : 'يكفي حتى ') + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + '</li>';
+      return '<li><span class="what"><b>' + esc(x.it.n) + (x.e.qty ? ' <small style="font-weight:400">' + qtyFmt(x.e.qty) + " " + esc(x.e.unit || x.it.u) + '</small>' : '') + '</b><span>' + (x.car ? 'بتاريخ ' : x.e.hv ? 'متوفر من قبل · سُجّل ' : 'اشتُري ') + esc(dayFmt.format(dateOf(x.e.date))) + ' · ' + (x.car ? 'تقديراً حتى ' : 'يكفي حتى ') + esc(dayFmt.format(dateOf(x.end))) + '</span></span>' + st + (x.left <= 0 && !x.car ? '<button type="button" class="btn sm" data-have="' + esc(x.e.item) + '">متوفر عندي</button>' : '') + '</li>';
     }).join("");
   }
   function setTick(el, prog){ el.hidden = prog == null; if (prog != null) el.style.insetInlineStart = (prog * 100) + "%"; }
