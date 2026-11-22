@@ -87,6 +87,7 @@ button{cursor:pointer}
 .legend{margin:10px 0 0;color:var(--muted);font-size:.82rem;display:flex;align-items:center;gap:6px}
 .legend i{display:inline-block;width:2px;height:14px;background:var(--ink);opacity:.55}
 .log{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column}
+.iline{display:grid;grid-template-columns:1fr 92px auto;gap:6px;align-items:center;margin-top:6px} .iline select,.iline input{min-width:0;width:100%} .iline .i-rm{min-height:40px;padding:0 10px}
 .stmt{width:100%;border-collapse:collapse;font-size:.72rem;font-variant-numeric:tabular-nums} .stmt th,.stmt td{padding:7px 3px;border-bottom:1px solid var(--line);text-align:end;white-space:nowrap} .stmt th{font-weight:600;color:var(--muted);white-space:normal;vertical-align:bottom} .stmt th:first-child,.stmt td:first-child{text-align:start;white-space:normal;min-width:74px} .stmt tr.st-sb td{color:var(--muted);font-size:.68rem} .stmt tr.st-sb td:first-child{padding-inline-start:12px} .stmt tr.st-tot td{font-weight:700;border-top:2px solid var(--line)} .stmt tr.st-hd td{font-weight:700;text-align:start;padding-top:14px;color:var(--accent,var(--ink))} .stmt .neg{color:var(--over)} .stmt small{display:block;white-space:normal;color:var(--muted);font-size:.62rem;font-weight:400;line-height:1.35;margin-top:2px}
 .log li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
 .log .acts{display:flex;flex-direction:column;gap:5px;flex:none}
@@ -152,6 +153,7 @@ body.has-tabs main{padding-bottom:96px}
   </section>
 
   <button type="button" class="btn primary wide" id="add-open">تسجيل مصروف</button>
+  <button type="button" class="btn sm" id="inv-open" style="margin-top:8px;width:100%">إضافة فاتورة مجزّأة على عدة بنود</button>
 
   <section class="card" aria-labelledby="cats-h">
     <div class="head"><h2 id="cats-h">البنود وحدودها</h2><span class="heads"><button type="button" class="btn sm" id="once-open">ميزانية هذا الشهر</button><button type="button" class="btn sm" id="cfg-open">تعديل الحدود</button></span></div>
@@ -275,6 +277,20 @@ body.has-tabs main{padding-bottom:96px}
   </div>
 </dialog>
 
+<dialog id="inv-dlg" aria-labelledby="inv-h">
+  <form class="form" id="inv-form">
+    <h2 id="inv-h">إضافة فاتورة</h2>
+    <div class="f"><label for="i-date">التاريخ</label><input type="date" id="i-date"></div>
+    <div class="f"><label for="i-name">المتجر أو الوصف (اختياري)</label><input type="text" id="i-name" autocomplete="off" maxlength="60"></div>
+    <div class="f"><label for="i-total">إجمالي الفاتورة (ريال)</label><input type="text" inputmode="decimal" id="i-total" autocomplete="off" placeholder="0"></div>
+    <div class="f"><label>تجزئة المبلغ على البنود والفروع</label><div id="i-lines"></div>
+      <button type="button" class="btn sm" id="i-add" style="margin-top:8px">إضافة جزء</button></div>
+    <p class="msg info" id="i-rest" style="margin:0"></p>
+    <p class="msg warn" id="i-warn" hidden></p>
+    <div class="row"><button type="submit" class="btn primary" id="i-save">حفظ الفاتورة</button><button type="button" class="btn" id="i-cancel">إلغاء</button></div>
+  </form>
+</dialog>
+
 <dialog id="stmt-dlg" aria-labelledby="stmt-h">
   <div class="form">
     <h2 id="stmt-h">كشف البنود</h2>
@@ -342,7 +358,7 @@ body.has-tabs main{padding-bottom:96px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var LS = "masroof-v1";
-  var VERSION = 45;
+  var VERSION = 46;
   /* النسخة المستقلة على الموقع: تبدأ ببنود مقترحة يعدّلها المستخدم، وتعرض رقم النسخة وزر التحديث */
   var STANDALONE = !window.claude;
   var STARTER = {income:5500, cats:[
@@ -872,7 +888,7 @@ body.has-tabs main{padding-bottom:96px}
     $("log-empty").hidden = rows.length > 0;
     $("log").innerHTML = rows.map(function(e){
       var c = cats.find(function(x){ return x.id === e.cat; });
-      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") : "") + (e.days > 1 ? " · " + (e.item || e.ext ? "تكفي " : "يغطي ") + daysWord(e.days) : "") + (e.note ? " · " + esc(e.note) : "") + (e.full > e.amount ? " · من أصل " + fmt(e.full) + "، والباقي خارج ميزانية الشهر" : "") + '</span></span>' +
+      return '<li><span class="what"><b>' + esc(c ? c.name : "بند محذوف") + '</b><span>' + esc(dayFmt.format(dateOf(e.date))) + (e.item && itemOf(e.item) ? " · " + esc(itemOf(e.item).n) + (e.qty ? " " + qtyFmt(e.qty) + " " + esc(e.unit || itemOf(e.item).u) : "") : "") + (e.days > 1 ? " · " + (e.item || e.ext ? "تكفي " : "يغطي ") + daysWord(e.days) : "") + (e.note ? " · " + esc(e.note) : "") + (e.full > e.amount ? " · من أصل " + fmt(e.full) + "، والباقي خارج ميزانية الشهر" : "") + (e.inv && e.invT > 0 ? " · جزء من فاتورة بإجمالي " + fmt(e.invT) : "") + '</span></span>' +
         '<span class="amt">' + fmt(e.amount) + '</span>' + (e.ext ? '<span class="pill ok">تلقائي</span>' : '<span class="acts"><button type="button" class="btn sm" data-edit="' + esc(e.id) + '">تعديل</button><button type="button" class="btn sm danger" data-del="' + esc(e.id) + '">حذف</button></span>') + '</li>';
     }).join("") + resPays(month).map(function(p){
       return '<li><span class="what"><b>' + esc(p.n) + '</b><span>' + esc(dayFmt.format(dateOf(p.d))) + ' · سداد من المحجوز، لا يُحسب على مصروف الشهر</span></span><span class="amt">' + fmt(p.a) + '</span><span class="pill ok">من المحجوز</span></li>'; }).join("");
@@ -1133,6 +1149,52 @@ body.has-tabs main{padding-bottom:96px}
     var h = Object.assign({}, cfg.have || {}); h[haveId] = {date:today(), days:Math.min(n, 366)};
     try { await saveCfg(cleanCfg(Object.assign({}, cfg, {have:h}))); $("have-dlg").close(); render(); }
     catch(e){ w.hidden = false; w.textContent = "تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."; }
+  });
+
+  /* ---------- فاتورة مجزّأة: إجمالي واحد يُقسَّم على بنود وفروع، ويُسجَّل كل جزء مصروفاً مستقلاً مرتبطاً بالفاتورة ---------- */
+  function invUnits(){ return units().filter(function(u){ return !carLocked(uCat(u.id)); }); }
+  function invMonth(){ return ($("i-date").value || today()).slice(0,7); }
+  function invLine(uid, amt){ var m = invMonth();
+    return '<div class="iline"><select class="i-u" aria-label="البند أو الفرع">' + invUnits().map(function(u){ return '<option value="' + esc(u.id) + '"' + (u.id === uid ? ' selected' : '') + '>' + esc(u.name) + ' — الباقي ' + fmt(Math.max(0, uRest(m, u.id))) + '</option>'; }).join("") +
+      '</select><input type="text" inputmode="decimal" class="i-a" aria-label="مبلغ الجزء" placeholder="0" value="' + (amt > 0 ? String(Math.round(amt * 100) / 100) : "") + '"><button type="button" class="btn sm i-rm" aria-label="حذف الجزء">×</button></div>'; }
+  function invParts(){ return Array.prototype.map.call($("i-lines").querySelectorAll(".iline"), function(l){ return {u:l.querySelector(".i-u").value, a:Math.round((num(l.querySelector(".i-a").value) || 0) * 100) / 100}; }); }
+  function invRest(){ var t = Math.round((num($("i-total").value) || 0) * 100) / 100, s = invParts().reduce(function(a, p){ return a + p.a; }, 0), r = Math.round((t - s) * 100) / 100, el = $("i-rest");
+    el.className = "msg " + (t > 0 && Math.abs(r) < 0.005 ? "info" : "warn");
+    el.textContent = !(t > 0) ? "اكتب إجمالي الفاتورة ثم وزّعه على الأجزاء." : Math.abs(r) < 0.005 ? "اكتملت التجزئة: " + fmt(t) + " ريال." : r > 0 ? "الموزَّع " + fmt(s) + " من " + fmt(t) + " — الباقي " + fmt(r) + " ريال." : "الأجزاء تزيد على الإجمالي بـ " + fmt(-r) + " ريال.";
+    return r; }
+  $("inv-open").addEventListener("click", function(){
+    if (!cfg) return; var us = invUnits(); if (!us.length) return;
+    $("i-date").value = today(); $("i-date").max = today(); $("i-name").value = ""; $("i-total").value = ""; $("i-warn").hidden = true;
+    $("i-lines").innerHTML = invLine(us[0].id, 0) + invLine((us[1] || us[0]).id, 0); invRest(); open($("inv-dlg")); try { $("inv-dlg").scrollTop = 0; } catch(e){}
+  });
+  $("i-add").addEventListener("click", function(){ var r = invRest(), used = invParts().map(function(p){ return p.u; }), nx = invUnits().find(function(u){ return used.indexOf(u.id) < 0; }) || invUnits()[0];
+    $("i-lines").insertAdjacentHTML("beforeend", invLine(nx.id, r > 0 ? r : 0)); invRest(); });
+  $("i-lines").addEventListener("click", function(ev){ var b = ev.target.closest(".i-rm"); if (!b) return; if ($("i-lines").querySelectorAll(".iline").length > 1) b.closest(".iline").remove(); invRest(); });
+  $("inv-form").addEventListener("input", function(){ $("i-warn").hidden = true; invRest(); });
+  $("i-cancel").addEventListener("click", function(){ $("inv-dlg").close(); });
+  $("inv-form").addEventListener("submit", async function(ev){
+    ev.preventDefault(); var w = $("i-warn"), date = $("i-date").value || today(), t = Math.round((num($("i-total").value) || 0) * 100) / 100, parts = invParts().filter(function(p){ return p.a > 0; }), m = date.slice(0,7);
+    var bad = function(msg){ w.hidden = false; w.textContent = msg; };
+    if (date > today()) return bad("لا يمكن تسجيل فاتورة بتاريخ قادم.");
+    if (!(t > 0)) return bad("اكتب إجمالي الفاتورة بالريال.");
+    if (!parts.length) return bad("اكتب مبلغ جزء واحد على الأقل.");
+    var r = Math.round((t - parts.reduce(function(a, p){ return a + p.a; }, 0)) * 100) / 100;
+    if (Math.abs(r) >= 0.005) return bad(r > 0 ? "التجزئة غير مكتملة: باقٍ " + fmt(r) + " ريال من الإجمالي لم يُوزَّع." : "الأجزاء تزيد على الإجمالي بـ " + fmt(-r) + " ريال.");
+    /* لا يُحفظ جزء يتجاوز المتاح في بنده أو فرعه: يُغطّى أولاً بالتحويل */
+    var need = {}; parts.forEach(function(p){ need[p.u] = (need[p.u] || 0) + p.a; });
+    var lack = Object.keys(need).map(function(u){ return {u:u, d:Math.round((need[u] - Math.max(0, uRest(m, u))) * 100) / 100}; }).filter(function(x){ return x.d > 0.005; });
+    if (lack.length) return bad("المتاح لا يكفي في: " + lack.map(function(x){ return "«" + uName(x.u) + "» ينقصه " + fmt(x.d); }).join("، ") + " ريال. حوّل إليه أولاً من «تحويل بين البنود والفروع»، أو عدّل التجزئة.");
+    var id = newId(), nm = $("i-name").value.trim().slice(0, 60), at = new Date().toISOString(), recs = parts.map(function(p){
+      var cat = uCat(p.u), k = uSub(p.u), rec = {cat:cat, amount:p.a, date:date, note:nm || "فاتورة", at:at, days:Math.max(1, Math.round((cfg.catDays && cfg.catDays[cat]) || CAT_DAYS[cat] || 1)), inv:id, invT:t};
+      if (cat === ITEM_CAT){ rec.days = 1; if (k === "h") rec.sub = "h"; else if (k === "b") rec.item = "baqala"; }
+      return rec; });
+    var btn = $("i-save"); btn.disabled = true;
+    try {
+      if (db){ for (var q = 0; q < recs.length; q++) await db.collection("expenses").doc().set(recs[q]); }
+      else { recs.forEach(function(rec){ expenses.push(Object.assign({id:newId()}, rec)); }); saveLocal(); }
+      month = m; $("inv-dlg").close(); render();
+    } catch(e){ bad("تعذّر الحفظ. تحقق من الاتصال ثم حاول مرة أخرى."); }
+    btn.disabled = false;
   });
 
   /* ---------- كشف البنود: أول المدة، المضاف، المصروف، رصيد آخر المدة ---------- */

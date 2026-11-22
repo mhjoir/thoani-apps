@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "70";
+var VERSION = "71";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -1446,7 +1446,7 @@ msPush();
   var add = document.createElement("dialog"); add.id = "v2-add"; add.setAttribute("aria-labelledby", "v2-add-h");
   function opt(k, ic, t, s){ return '<button type="button" class="o" data-add="' + k + '"><span class="sq">' + ico(I[ic], 24) + '</span><span class="t"><b>' + t + '</b><small>' + s + '</small></span>' + ico(I.chev, 18) + '</button>'; }
   add.innerHTML = '<h2 id="v2-add-h">إضافة مصروف</h2><p>اختر نوع المصروف</p><div class="os">' + opt("fuel", "fuel", "بنزين", "العداد ثم مبلغ التعبئة") + opt("svc", "tool", "صيانة السيارة", "العداد ثم نوع الصيانة") +
-    opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + opt("odo", "gauge", "تحديث العداد", "قراءة العداد فقط، بلا مصروف") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
+    opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + opt("inv", "coin", "فاتورة مجزّأة", "إجمالي واحد يُقسَّم على عدة بنود وفروع") + opt("odo", "gauge", "تحديث العداد", "قراءة العداد فقط، بلا مصروف") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
   var rd = document.createElement("dialog"); rd.id = "v2-row"; rd.setAttribute("aria-labelledby", "v2-row-h");
   rd.innerHTML = '<h2 id="v2-row-h"></h2><div id="v2-row-b"></div><div class="acts"><button type="button" class="pr" id="v2-row-edit">تعديل</button><button type="button" class="dl" id="v2-row-del">حذف</button><button type="button" class="x" id="v2-row-x">إغلاق</button></div>';
   document.body.appendChild(v2); document.body.appendChild(nav); document.body.appendChild(add); document.body.appendChild(rd);
@@ -1597,6 +1597,7 @@ msPush();
     var b = ev.target.closest("button[data-add]"); if (!b) return; add.close();
     var k = b.dataset.add;
     if (k === "odo"){ odoGo(); return; }
+    if (k === "inv"){ var pv = cur; S.show("exp"); inFrame(function(d){ var o = d.getElementById("inv-open"); if (!o) return false; o.click(); return true; }); back(pv); return; }
     if (k === "fuel" || k === "svc") addCar(); else if (k === "shop") addHome("food"); else addHome(null);
   });
   function odoGo(){ var prev = cur; S.show("car"); try { $("mnt-open").click(); $("odo-open").click(); } catch(e){} back(prev); }
