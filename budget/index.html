@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B6E63">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="دفتر المصروف">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>دفتر البنزين</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one phone-width column. Summary tiles, then the new-fill form (photos first), then the log. */
+:root{
+  --bg:#f2f4f8; --surface:#ffffff; --ink:#131a26; --muted:#5a6578; --line:#d9dfea;
+  --accent:#1f4fa3; --accent-ink:#ffffff; --accent-soft:#e6edf9;
+  --g91:#1b8748; --g91-soft:#e2f3e8; --r95:#c2302a; --r95-soft:#fbe6e4;
+  --warn:#9a5b00; --warn-soft:#fff2d9;
+  --font:"IBM Plex Sans Arabic","Segoe UI",Tahoma,"Noto Sans Arabic",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1118; --surface:#161c27; --ink:#e9eef7; --muted:#97a3b8; --line:#283245;
+    --accent:#86acf5; --accent-ink:#0d1118; --accent-soft:#1c2a45;
+    --g91:#5fd08c; --g91-soft:#143222; --r95:#f2807a; --r95-soft:#3b1a18;
+    --warn:#f0c070; --warn-soft:#3a2c10;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1118; --surface:#161c27; --ink:#e9eef7; --muted:#97a3b8; --line:#283245;
+  --accent:#86acf5; --accent-ink:#0d1118; --accent-soft:#1c2a45;
+  --g91:#5fd08c; --g91-soft:#143222; --r95:#f2807a; --r95-soft:#3b1a18;
+  --warn:#f0c070; --warn-soft:#3a2c10;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.6;
+  font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%}
+main{max-width:640px;margin:0 auto;padding:20px 16px 48px;display:flex;flex-direction:column;gap:16px}
+h1{font-size:1.5rem;margin:0;font-weight:700;text-wrap:balance}
+h2{font-size:1.05rem;margin:0;font-weight:700;color:var(--accent)}
+p{margin:0}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.status{font-size:.8rem;color:var(--muted)}
+.status.bad{color:var(--warn)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px}
+/* لوحة الإحصائيات بشكل طبلون السيارة: داكنة دائماً في الوضعين الفاتح والداكن */
+.cluster{--c-bg:#0e1117;--c-ring:#272e3d;--c-tick:#8791a5;--c-ink:#eef1f6;--c-mute:#a3acbe;--c-acc:#7fb0ff;--c-needle:#ff5a36;--c-lcd:#05070b;
+  background:radial-gradient(120% 90% at 50% 0%,#1a2030 0%,var(--c-bg) 62%);color:var(--c-ink);border:1px solid #2a3142;border-radius:18px;
+  padding:14px 12px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 6px 18px rgba(8,12,20,.28)}
+.cluster h2{color:var(--c-acc)}
+.dials{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dial{margin:0;display:flex;flex-direction:column;align-items:center;min-width:0;text-align:center}
+.dial svg{width:100%;max-width:210px;height:auto;display:block;direction:ltr}
+.dial figcaption{margin-top:-14px;display:flex;flex-direction:column;align-items:center;gap:0;min-width:0}
+.dial .v{font-size:1.45rem;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
+.dial .u{font-size:.72rem;color:var(--c-mute)}
+.dial .k{font-size:.8rem;font-weight:600;color:var(--c-ink);margin-top:6px}
+.dial.wide{grid-column:1 / -1;margin-top:10px} .dial.wide svg{width:50%}
+.lcd{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:1px;margin-top:12px;background:#232938;border:1px solid #232938;border-radius:12px;overflow:hidden}
+.lcd .cell{background:var(--c-lcd);padding:8px 8px 9px;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;text-align:center}
+.lcd .k{font-size:.68rem;color:var(--c-mute)}
+.lcd .v{font-size:1.08rem;font-weight:700;color:#cfe6ff;font-variant-numeric:tabular-nums;letter-spacing:.02em;overflow-wrap:anywhere}
+.lcd .odo{letter-spacing:.1em}
+.lcd .u{font-size:.66rem;color:var(--c-mute)}
+.cluster .bar i,.cluster .bar.cur i{background:repeating-linear-gradient(to top,var(--c-acc) 0 5px,transparent 5px 8px);border-radius:3px;opacity:1}
+.cluster .bar:not(.cur) i{background:repeating-linear-gradient(to top,#4a5a7a 0 5px,transparent 5px 8px);opacity:1}
+.cluster .bar b{color:var(--c-ink)} .cluster .bar span{color:var(--c-mute)}
+.cluster .bars{border-bottom:1px solid #2a3142;padding-bottom:0}
+
+.photos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.photo{display:flex;flex-direction:column;gap:6px;min-width:0}
+.drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  aspect-ratio:4/3;border:1.5px dashed var(--accent);border-radius:12px;background:var(--accent-soft);
+  color:var(--accent);font-weight:600;font-size:.92rem;text-align:center;padding:8px;cursor:pointer;overflow:hidden}
+.drop small{font-weight:400;font-size:.75rem;color:var(--muted)}
+.drop img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.pstat{font-size:.8rem;color:var(--muted);min-height:1.3em;overflow-wrap:anywhere}
+.pstat.ok{color:var(--g91)} .pstat.bad{color:var(--warn)}
+.spin{display:inline-block;width:.8em;height:.8em;border:2px solid currentColor;border-inline-start-color:transparent;border-radius:50%;
+  animation:sp .8s linear infinite;vertical-align:-1px;margin-inline-end:4px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f.wide{grid-column:1/-1}
+label,.lbl{font-size:.85rem;color:var(--muted);font-weight:500}
+input[type=text],input[type=datetime-local],select{width:100%;font:inherit;color:var(--ink);background:var(--bg);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:46px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.pair{display:grid;grid-template-columns:1fr 1.1fr;gap:8px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg button{font:inherit;font-weight:700;font-size:1.15rem;min-height:52px;border-radius:12px;cursor:pointer;
+  background:var(--bg);border:2px solid var(--line);color:var(--ink)}
+.seg button[data-t="91"][aria-pressed=true]{background:var(--g91);border-color:var(--g91);color:#fff}
+.seg button[data-t="95"][aria-pressed=true]{background:var(--r95);border-color:var(--r95);color:#fff}
+.seg button[data-t="91"]{border-color:var(--g91)} .seg button[data-t="95"]{border-color:var(--r95)}
+.hint{font-size:.82rem;color:var(--muted)}
+.err{font-size:.88rem;color:var(--r95);font-weight:500}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:700;border-radius:12px;min-height:48px;padding:0 18px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);flex:1}
+.btn.sm{min-height:36px;padding:0 12px;font-size:.85rem;font-weight:500}
+.btn.danger{color:var(--r95);border-color:var(--r95)}
+.btn:disabled{opacity:.55;cursor:default}
+
+.bars{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end;height:130px}
+.bar{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%;min-width:0}
+.bar i{display:block;width:100%;max-width:44px;background:var(--accent);border-radius:6px 6px 2px 2px;min-height:2px}
+.bar.cur i{background:var(--accent)} .bar:not(.cur) i{opacity:.45}
+.bar b{font-size:.72rem;font-weight:600}
+.bar span{font-size:.72rem;color:var(--muted);white-space:nowrap}
+
+.log{display:flex;flex-direction:column;gap:10px}
+.item{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.item .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.item .amt{font-size:1.2rem;font-weight:700}
+.chip{display:inline-block;font-weight:700;font-size:.8rem;border-radius:999px;padding:2px 10px}
+.chip.t91{background:var(--g91-soft);color:var(--g91)} .chip.t95{background:var(--r95-soft);color:var(--r95)}
+.when{font-size:.82rem;color:var(--muted)}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:.88rem}
+.facts span{color:var(--muted)} .facts b{font-weight:600}
+.empty{color:var(--muted);font-size:.92rem;text-align:center;padding:14px 0}
+details summary{cursor:pointer;font-weight:700;color:var(--accent)}
+details[open] summary{margin-bottom:12px}
+.pill{display:inline-block;font-weight:700;font-size:.78rem;border-radius:999px;padding:2px 10px;white-space:nowrap}
+.pill.over{background:var(--r95-soft);color:var(--r95)} .pill.soon{background:var(--warn-soft);color:var(--warn)}
+.pill.ok{background:var(--g91-soft);color:var(--g91)} .pill.none{background:var(--line);color:var(--muted)}
+.item.over{border-inline-start:4px solid var(--r95)} .item.soon{border-inline-start:4px solid var(--warn)}
+.item .nm{font-weight:700}
+.item .left{font-size:.95rem;font-weight:600}
+.prog{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
+.prog i{display:block;height:100%;border-radius:999px;background:var(--g91)}
+.prog.soon i{background:var(--warn)} .prog.over i{background:var(--r95)}
+.sheet{border:2px solid var(--accent);border-radius:12px;padding:12px;background:var(--accent-soft)}
+.sheet h3{margin:0;font-size:1rem;color:var(--accent)}
+input[type=date]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:46px}
+.linkbtn{font:inherit;font-size:.9rem;font-weight:600;color:var(--accent);background:none;border:0;padding:4px 0;
+  text-decoration:underline;text-underline-offset:4px;cursor:pointer;align-self:flex-start}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);padding:18px;
+  width:min(380px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;font-family:var(--font)}
+#car-dlg{width:min(480px,calc(100% - 16px))}
+.carbar{display:flex;flex-direction:column;gap:6px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px}
+.carchip{flex:none;font:inherit;font-weight:600;line-height:1.35;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:12px;padding:8px 14px;min-height:52px;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;justify-content:center}
+.carchip small{font-weight:400;font-size:.78rem;color:var(--muted)}
+.carchip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.carchip[aria-pressed=true] small{color:inherit;opacity:.85}
+.carchip.add{border-style:dashed;border-color:var(--accent);color:var(--accent);background:none}
+.carline{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.drop.reg{aspect-ratio:16/7}
+dialog::backdrop{background:rgba(8,12,20,.55)}
+.navrow{flex-direction:row;align-items:center;justify-content:space-between;font:inherit;color:inherit;text-align:start;cursor:pointer;width:100%}
+.navtxt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.navt{font-weight:700;color:var(--accent);font-size:1.05rem}
+.chev{font-size:1.6rem;line-height:1;color:var(--muted)}
+.navrow.fill{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.navrow.fill .navt,.navrow.fill .hint,.navrow.fill .chev{color:inherit}
+.navrow.fill .navt{font-size:1.2rem}
+#fill-dlg{width:min(680px,calc(100% - 12px));max-height:calc(100% - 16px);padding:20px 16px}
+#fill-dlg h2{font-size:1.3rem}
+#fill-dlg label,#fill-dlg .lbl{font-size:.98rem}
+#fill-dlg input[type=text],#fill-dlg input[type=datetime-local],#fill-dlg select{min-height:56px;font-size:1.15rem}
+#fill-dlg .seg button{min-height:64px;font-size:1.4rem}
+#fill-dlg .drop{font-size:1.05rem}
+#fill-dlg .btn.pri,#fill-dlg #cancel{min-height:56px;font-size:1.1rem}
+#mnt-dlg{width:min(640px,calc(100% - 16px));max-height:calc(100% - 32px);overflow:auto}
+.dlg-body{display:flex;flex-direction:column;gap:14px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .k{font-size:.8rem;color:var(--muted)} .stat .v{font-size:1.3rem;font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums} .stat .u{font-size:.78rem;color:var(--muted)}
+.stat.main{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)} .stat.main .k,.stat.main .u{color:inherit;opacity:.88}
+.trips{width:100%;border-collapse:collapse;font-size:.86rem;font-variant-numeric:tabular-nums}
+.trips th{font-weight:600;color:var(--muted);font-size:.76rem;text-align:start;padding:6px 4px;border-bottom:1px solid var(--line)}
+.trips td{padding:8px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+.trips td.n{text-align:end;white-space:nowrap} .trips th.n{text-align:end}
+#inv-dlg{width:min(640px,calc(100% - 16px));max-height:calc(100% - 32px);overflow:auto}
+#inv-img{max-width:100%;height:auto;border-radius:10px;border:1px solid var(--line)}
+input[type=file]{font:inherit;font-size:.85rem;width:100%;min-height:46px;padding:8px 0;color:var(--ink)}
+.chip.cash{background:var(--accent-soft);color:var(--accent)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="head">
+    <h1>دفتر البنزين</h1>
+    <span class="status" id="status" role="status"></span>
+  </div>
+
+  <section class="carbar" aria-label="السيارات">
+    <div class="chips" id="cars"></div>
+    <div class="carline"><span class="hint" id="car-info"></span><button type="button" class="linkbtn" id="car-edit" hidden>تعديل بيانات السيارة</button></div>
+  </section>
+
+  <section class="card" id="legacy" hidden>
+    <p id="legacy-txt"></p>
+    <div class="row"><button type="button" class="btn" id="legacy-go">ربطها بالسيارة الحالية</button></div>
+  </section>
+
+  <section class="cluster tiles" aria-label="الملخص">
+    <div class="dials">
+      <figure class="dial"><svg id="g-month" viewBox="0 0 200 152" aria-hidden="true"></svg>
+        <figcaption><span class="v" id="t-month">0</span><span class="u" id="t-month-u">ريال</span><span class="k">مصروف هذا الشهر</span></figcaption></figure>
+      <figure class="dial"><svg id="g-kmpl" viewBox="0 0 200 152" aria-hidden="true"></svg>
+        <figcaption><span class="v" id="t-kmpl">—</span><span class="u">كم لكل لتر</span><span class="k">متوسط الاستهلاك التراكمي حتى آخر عداد</span></figcaption></figure>
+      <figure class="dial wide"><svg id="g-since" viewBox="0 0 200 152" aria-hidden="true"></svg>
+        <figcaption><span class="v" id="t-since">—</span><span class="u" id="t-since-u">كم</span><span class="k">الممشى منذ آخر تعبئة</span></figcaption></figure>
+    </div>
+    <div class="lcd">
+      <div class="cell"><span class="k">العداد</span><span class="v odo" id="t-odo">—</span><span class="u">كم</span></div>
+      <div class="cell"><span class="k">مسافة هذا الشهر</span><span class="v" id="t-dist">—</span><span class="u" id="t-dist-u">كم</span></div>
+      <div class="cell"><span class="k">تكلفة الكيلومتر</span><span class="v" id="t-cost">—</span><span class="u" id="t-cost-u">ريال لكل كم</span></div>
+    </div>
+  </section>
+
+  <label class="card navrow" id="snap-row">
+    <span class="navtxt"><span class="navt">تصوير العداد</span><span class="hint">صوّر العداد أو اختر صورته من الاستوديو، ثم حدّد الخدمة</span></span>
+    <svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);flex:none"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 20 19H4a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 4 8z"/><circle cx="12" cy="13" r="3.4"/></svg>
+    <input type="file" id="snap-file" accept="image/*" hidden>
+  </label>
+
+  <dialog id="snap-dlg" aria-labelledby="snap-h">
+  <div class="dlg-body">
+    <h2 id="snap-h" style="margin:0">قراءة العداد</h2>
+    <p class="hint" id="snap-msg" role="status" style="margin:0"></p>
+    <div class="f"><label for="snap-odo">العداد (كم)</label><input type="text" inputmode="numeric" id="snap-odo" autocomplete="off" placeholder="قراءة العداد بالكيلومتر"></div>
+    <p class="hint" style="margin:0">اختر الخدمة التي تُسجَّل عليها هذه القراءة:</p>
+    <div class="row"><button type="button" class="btn pri" id="snap-fill">تعبئة بنزين</button><button type="button" class="btn" id="snap-mnt">الصيانة والاستهلاكيات</button><button type="button" class="btn" id="snap-cancel">إلغاء</button></div>
+  </div>
+  </dialog>
+
+  <button type="button" class="card navrow fill" id="fill-open">
+    <span class="navtxt"><span class="navt">تعبئة بنزين</span><span class="hint" id="fill-sum">اضغط لتسجيل تعبئة جديدة</span></span>
+    <span class="chev" aria-hidden="true">‹</span>
+  </button>
+
+  <dialog id="fill-dlg" aria-labelledby="form-h">
+  <div class="dlg-body">
+    <div class="head"><h2 id="form-h">تعبئة جديدة</h2><button type="button" class="btn sm" id="fill-close">إغلاق</button></div>
+
+    <div class="photos">
+      <div class="photo">
+        <label class="drop" id="dash-drop">
+          <img id="dash-img" alt="صورة الطبلون" hidden>
+          <span id="dash-cap">صورة الطبلون<br><small>العداد والمسافة المتبقية</small></span>
+          <input type="file" id="dash-file" accept="image/*" aria-label="اختر صورة الطبلون">
+        </label>
+        <div class="pstat" id="dash-status" role="status"></div>
+      </div>
+      <div class="photo">
+        <label class="drop" id="bank-drop">
+          <img id="bank-img" alt="صورة خصم البنك" hidden>
+          <span id="bank-cap">صورة خصم البنك<br><small>المبلغ والوقت</small></span>
+          <input type="file" id="bank-file" accept="image/*" aria-label="اختر صورة خصم البنك">
+        </label>
+        <div class="pstat" id="bank-status" role="status"></div>
+        <button type="button" class="linkbtn" id="cash-open">الدفع كاش</button>
+      </div>
+    </div>
+    <p class="hint" id="ai-hint">أضف الصورتين وتُملأ الخانات تلقائياً. راجع الأرقام قبل الحفظ.</p>
+
+    <form id="form" class="grid" novalidate>
+      <div class="f wide"><label for="f-car">السيارة</label><select id="f-car"></select></div>
+      <div class="f wide">
+        <span class="lbl" id="type-l">نوع البنزين (اختيار يدوي)</span>
+        <div class="seg" role="group" aria-labelledby="type-l">
+          <button type="button" id="type-91" data-t="91" aria-pressed="false">91</button>
+          <button type="button" id="type-95" data-t="95" aria-pressed="false">95</button>
+        </div>
+        <div class="pair">
+          <input type="text" id="type-other" autocomplete="off" placeholder="نوع آخر (مثل 98 أو ديزل)" aria-label="نوع وقود آخر">
+          <input type="text" inputmode="decimal" id="type-other-price" autocomplete="off" placeholder="سعر اللتر" aria-label="سعر اللتر للنوع الآخر" hidden>
+        </div>
+      </div>
+      <div class="f">
+        <label for="amount">المبلغ (ريال)</label>
+        <input type="text" inputmode="decimal" id="amount" autocomplete="off" placeholder="مثال: 100">
+      </div>
+      <div class="f">
+        <label for="odo">قراءة العداد (كم)</label>
+        <input type="text" inputmode="numeric" id="odo" autocomplete="off" placeholder="إجباري" aria-required="true">
+      </div>
+      <div class="f">
+        <label for="range">المسافة المتبقية (كم)</label>
+        <input type="text" inputmode="numeric" id="range" autocomplete="off" placeholder="كما في الطبلون">
+      </div>
+      <div class="f">
+        <label for="avg">متوسط الطبلون</label>
+        <div class="pair">
+          <input type="text" inputmode="decimal" id="avg" autocomplete="off" placeholder="—">
+          <select id="avg-unit" aria-label="وحدة المتوسط">
+            <option value="km/l">كم/لتر</option>
+            <option value="l/100km">لتر/100كم</option>
+          </select>
+        </div>
+      </div>
+      <div class="f wide">
+        <label for="when">التاريخ والوقت</label>
+        <input type="datetime-local" id="when">
+      </div>
+      <p class="hint f wide" id="liters-hint"></p>
+      <p class="err f wide" id="form-err" role="alert" hidden></p>
+      <div class="row f wide">
+        <button type="submit" class="btn pri" id="save">حفظ التعبئة</button>
+        <button type="button" class="btn" id="cancel" hidden>إلغاء التعديل</button>
+      </div>
+    </form>
+  </div>
+  </dialog>
+
+  <button type="button" class="card navrow" id="mnt-open">
+    <span class="navtxt"><span class="navt">الصيانة والاستهلاكيات</span><span class="hint" id="mnt-sum"></span></span>
+    <span class="chev" aria-hidden="true">‹</span>
+  </button>
+
+  <button type="button" class="card navrow" id="trip-open">
+    <span class="navtxt"><span class="navt">تحليل الممشى</span><span class="hint" id="trip-sum">الممشى اليومي وصرف البنزين من قراءات العداد</span></span>
+    <span class="chev" aria-hidden="true">‹</span>
+  </button>
+
+  <dialog id="trip-dlg" aria-labelledby="trip-h">
+  <div class="dlg-body">
+    <div class="head"><h2 id="trip-h">تحليل الممشى</h2><button type="button" class="btn sm" id="trip-close">إغلاق</button></div>
+    <p class="hint" id="trip-note" style="margin:0"></p>
+    <div class="stats" id="trip-stats"></div>
+    <div><button type="button" class="btn sm" id="trip-odo">تحديث العداد الآن</button></div>
+    <h3 style="margin:0;font-size:1rem">الفترات بين القراءات</h3>
+    <div id="trip-list"></div>
+    <h3 style="margin:0;font-size:1rem">سجل قراءات العداد</h3>
+    <div id="trip-log"></div>
+    <p class="hint" style="margin:0">القراءات تؤخذ من تحديثات العداد ومن التعبئات والصيانة. صرف البنزين تقديري: الممشى × تكلفة الكيلومتر التراكمية من تعبئاتك.</p>
+  </div>
+  </dialog>
+
+  <section class="card" id="oil-card" aria-label="تغيير الزيت" hidden></section>
+
+  <dialog id="mnt-dlg" aria-labelledby="mnt-h">
+  <div class="dlg-body">
+    <div class="head"><h2 id="mnt-h">الصيانة والاستهلاكيات</h2><button type="button" class="btn sm" id="mnt-close">إغلاق</button></div>
+    <p class="hint" id="mnt-odo"></p>
+    <div id="odo-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px">
+      <button type="button" class="btn sm" id="odo-open">تحديث العداد</button>
+      <input type="text" inputmode="numeric" id="odo-now" aria-label="قراءة العداد الآن بالكيلومتر" placeholder="قراءة العداد الآن (كم)" style="display:none;flex:1;min-width:150px">
+      <label class="btn sm" id="odo-cam" style="display:none;cursor:pointer">صوّر الطبلون<input type="file" id="odo-file" accept="image/*" hidden></label>
+      <button type="button" class="btn sm primary" id="odo-save" style="display:none">حفظ</button>
+      <button type="button" class="btn sm" id="odo-cancel" style="display:none">إلغاء</button>
+      <span class="hint" id="odo-msg" role="status" style="flex-basis:100%;margin:0"></span>
+    </div>
+
+    <form id="sform" class="grid sheet" hidden novalidate>
+      <h3 class="f wide" id="s-title">تسجيل تغيير</h3>
+      <fieldset class="f wide" id="s-with" hidden style="border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:0">
+        <legend style="padding:0 6px;font-weight:700;font-size:.9rem">إضافة فلاتر تغيّرت مع الزيت (اختياري)</legend>
+        <div id="s-with-list" style="display:flex;flex-wrap:wrap;gap:6px 18px"></div>
+        <p class="hint" style="margin:6px 0 0">التكلفة تُسجَّل مرة واحدة على تغيير الزيت، والبنود المختارة تُسجَّل بنفس التاريخ والعداد.</p>
+      </fieldset>
+      <div class="f wide" id="s-prev" hidden style="border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--surface)"></div>
+      <div class="f wide"><label for="s-dash">صورة العداد (الطبلون)</label><input type="file" id="s-dash" accept="image/*"></div>
+      <div class="f"><label for="s-stk">صورة ستيكر التغيير</label><input type="file" id="s-stk" accept="image/*"></div>
+      <div class="f"><label for="s-inv">صورة الفاتورة (تُحفظ للضمان)</label><input type="file" id="s-inv" accept="image/*"></div>
+      <div class="pstat f wide" id="s-read" role="status">أضف صورة الستيكر أو الفاتورة لتُملأ الخانات تلقائياً، أو أدخلها يدوياً.</div>
+      <div class="f"><label for="s-when">تاريخ التغيير</label><input type="date" id="s-when"></div>
+      <div class="f"><label for="s-odo">قراءة العداد (كم)</label><input type="text" inputmode="numeric" id="s-odo" autocomplete="off" placeholder="إجباري" aria-required="true"></div>
+      <div class="f"><label for="s-cost">التكلفة (ريال)</label><input type="text" inputmode="decimal" id="s-cost" autocomplete="off" placeholder="إجباري" aria-required="true"></div>
+      <div class="f"><label for="s-note">ملاحظة</label><input type="text" id="s-note" autocomplete="off" placeholder="النوع أو الورشة"></div>
+      <div class="f wide"><label for="s-warranty">مدة الضمان (شهر)</label><input type="text" inputmode="numeric" id="s-warranty" autocomplete="off" placeholder="اختياري"></div>
+      <p class="hint f wide" id="s-inv-hint" hidden>حفظ صورة الفاتورة غير متاح في هذا العرض، لكن قراءتها تعمل. افتح الصفحة من حسابك في Claude لحفظها.</p>
+      <p class="err f wide" id="s-err" role="alert" hidden></p>
+      <div class="row f wide"><button type="submit" class="btn pri" id="s-save">حفظ التغيير</button><button type="button" class="btn" id="s-cancel">إلغاء</button></div>
+    </form>
+
+    <form id="iform" class="grid sheet" hidden novalidate>
+      <h3 class="f wide" id="i-title">إضافة بند</h3>
+      <div class="f wide"><label for="i-name">اسم البند</label><input type="text" id="i-name" autocomplete="off" placeholder="مثال: سير المكينة"></div>
+      <div class="f"><label for="i-km">يُغيَّر كل (كم)</label><input type="text" inputmode="numeric" id="i-km" autocomplete="off" placeholder="0 = بدون"></div>
+      <div class="f"><label for="i-months">أو كل (شهر)</label><input type="text" inputmode="numeric" id="i-months" autocomplete="off" placeholder="0 = بدون"></div>
+      <p class="err f wide" id="i-err" role="alert" hidden></p>
+      <div class="row f wide"><button type="submit" class="btn pri" id="i-save">حفظ البند</button><button type="button" class="btn" id="i-cancel">إلغاء</button><button type="button" class="btn danger" id="i-del" hidden>حذف البند</button></div>
+    </form>
+
+    <div class="log" id="mnt"></div>
+    <div class="row"><button type="button" class="btn sm" id="add-item">إضافة بند جديد</button></div>
+    <details>
+      <summary>سجل الصيانة السابقة</summary>
+      <div class="log" id="svc-log"></div>
+    </details>
+  </div>
+  </dialog>
+
+  <section class="cluster" aria-labelledby="chart-h">
+    <h2 id="chart-h">المصروف آخر 6 أشهر (ريال)</h2>
+    <div class="bars" id="bars"></div>
+  </section>
+
+  <section class="card" aria-labelledby="log-h">
+    <h2 id="log-h">سجل التعبئات</h2>
+    <div class="log" id="log"></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>سعر اللتر</summary>
+      <div class="grid">
+        <div class="f"><label for="p91">بنزين 91 (ريال/لتر)</label><input type="text" inputmode="decimal" id="p91"></div>
+        <div class="f"><label for="p95">بنزين 95 (ريال/لتر)</label><input type="text" inputmode="decimal" id="p95"></div>
+        <p class="hint f wide">يُحسب عدد اللترات من المبلغ ÷ سعر اللتر. عدّل السعر هنا إذا تغيّر، والتعبئات السابقة تحتفظ بسعرها.</p>
+        <div class="row f wide"><button type="button" class="btn" id="save-prices">حفظ الأسعار</button><span class="hint" id="prices-msg" role="status"></span></div>
+      </div>
+    </details>
+  </section>
+</main>
+
+<dialog id="car-dlg" aria-labelledby="car-h">
+  <form id="car-form" class="grid" novalidate>
+    <h2 class="f wide" id="car-h">بيانات السيارة</h2>
+    <p class="hint f wide" id="car-note"></p>
+    <div class="f wide photo">
+      <label class="drop reg" id="reg-drop">
+        <img id="reg-img" alt="صورة الاستمارة" hidden>
+        <span id="reg-cap">صورة الاستمارة<br><small>تُملأ البيانات تلقائياً</small></span>
+        <input type="file" id="reg-file" accept="image/*" aria-label="اختر صورة الاستمارة">
+      </label>
+      <div class="pstat" id="reg-status" role="status"></div>
+    </div>
+    <div class="f"><label for="v-make">الماركة</label><input type="text" id="v-make" autocomplete="off" placeholder="مثال: تويوتا"></div>
+    <div class="f"><label for="v-model">الطراز</label><input type="text" id="v-model" autocomplete="off" placeholder="مثال: كامري"></div>
+    <div class="f"><label for="v-plate">رقم اللوحة</label><input type="text" id="v-plate" autocomplete="off" placeholder="أ ب ج 1234"></div>
+    <div class="f"><label for="v-year">سنة الصنع</label><input type="text" inputmode="numeric" id="v-year" autocomplete="off" placeholder="اختياري"></div>
+    <div class="f"><label for="v-color">اللون</label><input type="text" id="v-color" autocomplete="off" placeholder="اختياري"></div>
+    <div class="f"><label for="v-exp">انتهاء الاستمارة</label><input type="date" id="v-exp"></div>
+    <div class="f wide"><label for="v-vin">رقم الهيكل</label><input type="text" id="v-vin" autocomplete="off" placeholder="اختياري" dir="ltr"></div>
+    <p class="err f wide" id="v-err" role="alert" hidden></p>
+    <div class="row f wide"><button type="submit" class="btn pri" id="car-save">حفظ السيارة</button><button type="button" class="btn" id="car-cancel">إلغاء</button><button type="button" class="btn danger" id="car-del" hidden>حذف السيارة</button></div>
+  </form>
+</dialog>
+
+<dialog id="inv-dlg" aria-label="صورة الفاتورة">
+  <div class="dlg-body">
+    <div class="head"><h2>فاتورة الضمان</h2><button type="button" class="btn sm" id="inv-close">إغلاق</button></div>
+    <img id="inv-img" alt="صورة الفاتورة">
+    <p class="hint" id="inv-msg" hidden>تعذّر عرض صورة الفاتورة.</p>
+  </div>
+</dialog>
+
+<dialog id="cash-dlg" aria-labelledby="cash-h">
+  <form id="cash-form" class="grid" novalidate>
+    <h2 class="f wide" id="cash-h">الدفع كاش</h2>
+    <div class="f wide"><label for="c-amount">المبلغ (ريال)</label><input type="text" inputmode="decimal" id="c-amount" autocomplete="off" placeholder="مثال: 100"></div>
+    <div class="f wide"><label for="c-when">التاريخ والوقت</label><input type="datetime-local" id="c-when"></div>
+    <p class="err f wide" id="c-err" role="alert" hidden></p>
+    <div class="row f wide"><button type="submit" class="btn pri">اعتماد</button><button type="button" class="btn" id="cash-cancel">إلغاء</button></div>
+  </form>
+</dialog>
+
+<script src="standalone.js"></script>
+<script>
+(function(){
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+var DEF = {91:2.18, 95:2.33};
+var prices = {91:DEF[91], 95:DEF[95]};
+var fills = [];
+var db = null, canImages = false, editingId = null, fuelType = null, loaded = false, readOnly = false;
+var LS = "fuel-log-v1";
+var DEF_ITEMS = [
+  {id:"oil", name:"زيت المحرك", km:10000, months:6},
+  {id:"oil-filter", name:"فلتر الزيت", km:10000, months:6},
+  {id:"air-filter", name:"فلتر الهواء", km:20000, months:12},
+  {id:"cabin-filter", name:"فلتر المكيف", km:20000, months:12},
+  {id:"brake-pads", name:"فحمات الفرامل", km:40000, months:0},
+  {id:"tires", name:"الإطارات", km:50000, months:48},
+  {id:"battery", name:"البطارية", km:0, months:24},
+  {id:"gear-oil", name:"زيت القير", km:60000, months:0},
+  {id:"coolant", name:"سائل التبريد", km:40000, months:24},
+  {id:"spark", name:"البواجي", km:40000, months:0},
+  {id:"wipers", name:"مساحات الزجاج", km:0, months:12}
+];
+var itemCfg = {};   /* id -> {name, km, months, hidden} : the owner's changes over the list above */
+var services = [];  /* {id, itemId, ts, odo, cost, note} */
+var sItem = null, sEdit = null, iEdit = null, payMethod = "card", assets = null;
+var cars = [], curCar = null, carEdit = null, carForced = false, carsLoaded = false, svcLoaded = false, linking = false;
+var CUR = "fuel-cur-car";
+function F(){ return fills.filter(function(f){ return f.carId === curCar; }); }
+function S(){ return services.filter(function(s){ return s.carId === curCar; }); }
+function legacyCount(){
+  return fills.filter(function(f){ return !f.carId; }).length + services.filter(function(s){ return !s.carId; }).length;
+}
+function carTitle(c){ return [c.make, c.model, c.year].filter(Boolean).join(" ") || "سيارة"; }
+function setCar(id){ curCar = id; try { localStorage.setItem(CUR, id); } catch(e){} }
+function warrantyText(s){
+  if (!s || !(s.warranty > 0)) return "";
+  var end = dayOf(s.ts); end.setMonth(end.getMonth() + Number(s.warranty));
+  return (end > new Date() ? "الضمان سارٍ حتى " : "انتهى الضمان في ") + dayFmt.format(end);
+}
+async function toJpeg(file){
+  try {
+    var bmp = await createImageBitmap(file);
+    var sc = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    var c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    var b = await new Promise(function(r){ c.toBlob(r, "image/jpeg", 0.85); });
+    if (b) return b;
+  } catch(e){}
+  return file;
+}
+function showInv(id){
+  var img = $("inv-img"), d = $("inv-dlg");
+  $("inv-msg").hidden = true; img.hidden = false;
+  img.onerror = function(){ img.hidden = true; $("inv-msg").hidden = false; };
+  if (window.__blobUrl) window.__blobUrl(id).then(function(u){ img.src = u; }).catch(function(){ img.onerror(); });
+  else img.src = "/_blob/" + encodeURIComponent(id);
+  try { d.showModal(); } catch(e){ d.setAttribute("open", ""); }
+}
+var sampleReady = Promise.resolve(null);
+
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function num(v){
+  if (v == null) return null;
+  var s = String(v).replace(/[٠-٩]/g, function(d){ return "٠١٢٣٤٥٦٧٨٩".indexOf(d); })
+                   .replace(/[۰-۹]/g, function(d){ return "۰۱۲۳۴۵۶۷۸۹".indexOf(d); })
+                   .replace(/٫/g, ".").replace(/[٬,\s]/g, "");
+  if (s === "") return null;
+  var n = Number(s);
+  return isFinite(n) ? n : null;
+}
+function fmt(n, d){ return Number(n).toLocaleString("en-US", {minimumFractionDigits:d||0, maximumFractionDigits:d||0}); }
+function nowLocal(){ var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,16); }
+var dateFmt = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {weekday:"short", day:"numeric", month:"short", year:"numeric", hour:"numeric", minute:"2-digit"});
+var monFmt = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {month:"short"});
+function setStatus(t, bad){ var s = $("status"); s.textContent = t; s.className = "status" + (bad ? " bad" : ""); }
+
+/* ---------- derived numbers ---------- */
+function derive(){
+  var arr = F().sort(function(a,b){ return a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0; });
+  var prevOdo = null;
+  arr.forEach(function(f){
+    f._liters = f.price > 0 ? f.amount / f.price : null;
+    f._dist = null;
+    if (f.odo != null){
+      if (prevOdo != null && f.odo > prevOdo){
+        f._dist = f.odo - prevOdo;
+      }
+      prevOdo = f.odo;
+    }
+  });
+  return arr;
+}
+
+/* عدّاد دائري بإبرة مثل طبلون السيارة: مسار، تدريج بأرقام، قوس القيمة، إبرة */
+/* تدريج العدّاد يتوسع تلقائياً: كلما بلغت القيمة نصف التدريج انتقل للتدريج الأعلى (200 ثم 500 ثم 1000 ثم 2000 ...) */
+function niceMax(v, floor){
+  var m = floor;
+  while (v >= m * 0.5){
+    var lead = Math.round(m / Math.pow(10, Math.floor(Math.log10(m) + 1e-9)));
+    m = Math.round(m * (lead === 2 ? 2.5 : 2));
+  }
+  return m;
+}
+function gauge(id, val, max){
+  var cx = 100, cy = 100, r = 80, a0 = 215, sw = 250, f = max > 0 && val > 0 ? Math.min(1, val / max) : 0;
+  function pt(deg, rad){ var t = deg * Math.PI / 180; return (cx + rad * Math.cos(t)).toFixed(1) + " " + (cy - rad * Math.sin(t)).toFixed(1); }
+  function arc(fr){ return "M" + pt(a0, r) + " A" + r + " " + r + " 0 " + (sw * fr > 180 ? 1 : 0) + " 1 " + pt(a0 - sw * fr, r); }
+  var h = '<path d="' + arc(1) + '" fill="none" stroke="#272e3d" stroke-width="9" stroke-linecap="round"/>';
+  if (f > 0) h += '<path d="' + arc(f) + '" fill="none" stroke="#7fb0ff" stroke-width="9" stroke-linecap="round"/>';
+  for (var i = 0; i <= 10; i++){
+    var d = a0 - sw * i / 10, big = i % 2 === 0;
+    h += '<path d="M' + pt(d, r - 9) + ' L' + pt(d, r - (big ? 18 : 14)) + '" stroke="' + (big ? "#c3cad8" : "#6b7487") + '" stroke-width="' + (big ? 2 : 1.2) + '"/>';
+    if (big){
+      var p = pt(d, r - 30).split(" "), lab = max * i / 10;
+      h += '<text x="' + p[0] + '" y="' + (Number(p[1]) + 3.5) + '" text-anchor="middle" font-size="10" font-weight="600" fill="#a3acbe">' +
+        (lab >= 1000 ? (lab / 1000) + "k" : String(Math.round(lab * 10) / 10)) + '</text>';
+    }
+  }
+  var nd = a0 - sw * f;
+  h += '<path d="M' + pt(nd + 180, 12) + ' L' + pt(nd, r - 13) + '" stroke="#ff5a36" stroke-width="3.2" stroke-linecap="round"/>' +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="7.5" fill="#1b2030" stroke="#ff5a36" stroke-width="2"/>';
+  $(id).innerHTML = h;
+}
+/* حذف التكرار: تغيير لنفس البند والسيارة عند نفس العداد، أو تعبئة مطابقة تماماً (السيارة والعداد والمبلغ والوقت). يبقى سجل واحد، والأولوية لما له فاتورة */
+var dedupBusy = false;
+function dedupe(){
+  if (dedupBusy || readOnly || !loaded || !svcLoaded) return;
+  var kill = [], seen = {};
+  services.slice().sort(function(a, b){ return (b.invoice ? 1 : 0) - (a.invoice ? 1 : 0) || (b.cost ? 1 : 0) - (a.cost ? 1 : 0); }).forEach(function(s){
+    if (s.odo == null) return;
+    var k = [s.carId, s.itemId, s.odo].join("|");
+    if (seen[k]) kill.push(["services", s.id]); else seen[k] = 1;
+  });
+  seen = {};
+  fills.forEach(function(f){
+    if (f.odo == null) return;
+    var k = [f.carId, f.odo, f.amount, f.ts].join("|");
+    if (seen[k]) kill.push(["fills", f.id]); else seen[k] = 1;
+  });
+  if (!kill.length) return;
+  if (db){
+    dedupBusy = true;
+    Promise.all(kill.map(function(k){ return db.doc(k[0] + "/" + k[1]).delete().catch(function(){}); })).then(function(){ dedupBusy = false; });
+  } else {
+    var ids = {}; kill.forEach(function(k){ ids[k[0] + "/" + k[1]] = 1; });
+    services = services.filter(function(s){ return !ids["services/" + s.id]; });
+    fills = fills.filter(function(f){ return !ids["fills/" + f.id]; });
+    saveLocal();
+  }
+}
+function render(){
+  dedupe(); gate(); renderCars(); renderMnt(); renderTrips();
+  var arr = derive();
+  var ym = nowLocal().slice(0,7);
+  var month = 0, mCount = 0, dist = 0, lit = 0, amt = 0;
+  arr.forEach(function(f){
+    if (f.ts.slice(0,7) === ym){ month += f.amount; mCount++; }
+  });
+  /* متوسط تراكمي حتى آخر عداد محدَّث: المسافة من أول تعبئة إلى آخر قراءة عداد (يدوية أو صيانة أو تعبئة) على وقود كل التعبئات.
+     إن لم توجد قراءة بعد آخر تعبئة فوقودها لم يُستهلك بعد، فتُستثنى ويقف الحساب عند عدادها */
+  var iFirst = -1, iLast = -1, litOk = true, odoCum = curOdo();
+  arr.forEach(function(f, i){ if (f.odo != null){ if (iFirst < 0) iFirst = i; iLast = i; } });
+  var cumExt = iLast >= 0 && odoCum != null && odoCum > arr[iLast].odo;
+  if (iFirst >= 0 && (cumExt || (iLast > iFirst && arr[iLast].odo > arr[iFirst].odo))){
+    dist = (cumExt ? odoCum : arr[iLast].odo) - arr[iFirst].odo;
+    for (var q = iFirst; q < iLast + (cumExt ? 1 : 0); q++){ amt += arr[q].amount; if (arr[q]._liters) lit += arr[q]._liters; else litOk = false; }
+    if (!litOk) lit = 0;
+  }
+  var lastF = arr[arr.length - 1], lastWhen = "";
+  if (lastF){ try { lastWhen = dayFmt.format(new Date(lastF.ts)); } catch(e){} }
+  $("fill-sum").textContent = lastF ? "آخر تعبئة: " + fmt(lastF.amount, lastF.amount % 1 ? 2 : 0) + " ريال" + (lastWhen ? " · " + lastWhen : "")
+    : "اضغط لتسجيل تعبئة جديدة";
+  $("t-month").textContent = fmt(month, month % 1 ? 2 : 0);
+  $("t-month-u").textContent = "ريال في " + mCount + " تعبئة";
+  $("t-kmpl").textContent = dist && lit ? fmt(dist / lit, 1) : "—";
+  var kv = dist && lit ? dist / lit : 0, odoNowV = curOdo();
+  gauge("g-kmpl", kv, kv > 20 ? 40 : 20);
+  $("t-odo").textContent = odoNowV != null ? fmt(odoNowV) : "—";
+  /* المسافة وتكلفة الكيلومتر حسب الشهر الحالي: من آخر قراءة عداد قبل بداية الشهر (أو أول قراءة فيه) إلى آخر قراءة في الشهر،
+     والتكلفة على وقود التعبئات بينهما عدا الأخيرة */
+  var mBase = -1, mLast = -1, mDist = 0, mAmt = 0;
+  arr.forEach(function(f, i){
+    if (f.odo == null) return;
+    var k = f.ts.slice(0,7);
+    if (k < ym) mBase = i;
+    else if (k === ym){ if (mBase < 0) mBase = i; mLast = i; }
+  });
+  if (mBase >= 0 && mLast > mBase && arr[mLast].odo > arr[mBase].odo){
+    mDist = arr[mLast].odo - arr[mBase].odo;
+    for (var w = mBase; w < mLast; w++) mAmt += arr[w].amount;
+  }
+  var mName = ""; try { mName = monFmt.format(new Date()); } catch(e){}
+  $("t-cost").textContent = mDist ? fmt(mAmt / mDist, 2) : "—";
+  $("t-cost-u").textContent = "ريال/كم في " + (mName || "هذا الشهر");
+  $("t-dist").textContent = mDist ? fmt(mDist) : "—";
+  $("t-dist-u").textContent = mDist ? "كم في " + (mName || "هذا الشهر") : "تظهر بعد تعبئتين في الشهر";
+
+  /* monthly bars */
+  var months = [], now = new Date();
+  for (var i = 5; i >= 0; i--){
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    months.push({key:key, label:monFmt.format(d), total:0});
+  }
+  arr.forEach(function(f){ var m = months.find(function(x){ return x.key === f.ts.slice(0,7); }); if (m) m.total += f.amount; });
+  var max = Math.max.apply(null, months.map(function(m){ return m.total; }).concat([1]));
+  gauge("g-month", month, niceMax(month, 200));
+  /* الممشى منذ آخر تعبئة: آخر عداد محدَّث (يدوي أو صيانة أو تعبئة) ناقص عداد آخر تعبئة */
+  var lastF = null; arr.forEach(function(f){ if (f.odo != null && (!lastF || f.ts > lastF.ts)) lastF = f; });
+  var odoTop = curOdo(), since = lastF && odoTop != null ? Math.max(0, odoTop - lastF.odo) : null;
+  $("t-since").textContent = since != null ? fmt(since) : "—";
+  $("t-since-u").textContent = lastF ? "كم · عداد آخر تعبئة " + fmt(lastF.odo) : "كم · يظهر بعد أول تعبئة";
+  gauge("g-since", since || 0, niceMax(since || 0, 200));
+  $("bars").innerHTML = months.map(function(m, i){
+    return '<div class="bar' + (i === 5 ? " cur" : "") + '"><b>' + (m.total ? fmt(m.total) : "") + '</b><i style="height:' +
+      Math.round(m.total / max * 78) + '%"></i><span>' + esc(m.label) + '</span></div>';
+  }).join("");
+
+  /* log */
+  var log = $("log");
+  if (!arr.length){
+    log.innerHTML = '<p class="empty">' + (loaded ? "لا توجد تعبئات بعد. أضف أول تعبئة من النموذج أعلاه." : "جارٍ تحميل السجل…") + '</p>';
+    return;
+  }
+  log.innerHTML = arr.slice().reverse().map(function(f){
+    var when; try { when = dateFmt.format(new Date(f.ts)); } catch(e){ when = f.ts; }
+    var facts = [];
+    if (f.odo != null) facts.push(["العداد", fmt(f.odo) + " كم"]);
+    if (f._liters) facts.push(["اللترات", fmt(f._liters, 1) + " لتر"]);
+    if (f._dist) facts.push(["منذ التعبئة السابقة", fmt(f._dist) + " كم"]);
+    if (f.range != null) facts.push(["المتبقي في الطبلون", fmt(f.range) + " كم"]);
+    if (f.avg != null) facts.push(["متوسط الطبلون", fmt(f.avg, 1) + (f.avgUnit === "l/100km" ? " لتر/100كم" : " كم/لتر")]);
+    return '<article class="item"><div class="top"><span class="amt">' + fmt(f.amount, f.amount % 1 ? 2 : 0) + ' ريال</span>' +
+      '<span>' + (f.pay === "cash" ? '<span class="chip cash">كاش</span> ' : "") +
+      (f.type === 91 || f.type === 95 ? '<span class="chip t' + f.type + '">بنزين ' + f.type + '</span>' : '<span class="chip cash">' + esc(f.type) + '</span>') + '</span></div>' +
+      '<div class="when">' + esc(when) + '</div>' +
+      '<div class="facts">' + facts.map(function(x){ return '<div><span>' + x[0] + ': </span><b>' + esc(x[1]) + '</b></div>'; }).join("") + '</div>' +
+      (readOnly ? "" : '<div class="row"><button type="button" class="btn sm" data-edit="' + esc(f.id) + '">تعديل</button></div>') + '</article>';
+  }).join("");
+}
+
+/* ---------- form ---------- */
+function setType(t){
+  var other = t != null && t !== 91 && t !== 95;
+  fuelType = other ? "other" : t;
+  $("type-other").value = other ? t : ""; if (!other) $("type-other-price").value = "";
+  $("type-other-price").hidden = !other;
+  $("type-91").setAttribute("aria-pressed", String(t === 91));
+  $("type-95").setAttribute("aria-pressed", String(t === 95));
+  litersHint();
+}
+function curPrice(){
+  if (fuelType === "other"){ var p = num($("type-other-price").value); return p > 0 ? p : null; }
+  return editingPrice() || prices[fuelType] || null;
+}
+function litersHint(){
+  var a = num($("amount").value), h = $("liters-hint");
+  var p = fuelType ? curPrice() : null;
+  if (a > 0 && p){
+    h.textContent = "≈ " + fmt(a / p, 1) + " لتر بسعر " + fmt(p, 2) + " ريال للتر";
+  } else h.textContent = "";
+}
+function editingPrice(){
+  if (!editingId) return null;
+  var f = fills.find(function(x){ return x.id === editingId; });
+  return f && f.type === fuelType ? f.price : null;
+}
+function clearPhoto(k){
+  $(k + "-img").hidden = true; $(k + "-img").removeAttribute("src"); $(k + "-cap").hidden = false;
+  $(k + "-file").value = ""; $(k + "-status").textContent = ""; $(k + "-status").className = "pstat";
+}
+function resetForm(){
+  editingId = null; payMethod = "card";
+  ["amount","odo","range","avg"].forEach(function(id){ $(id).value = ""; });
+  $("avg-unit").value = "km/l"; $("when").value = nowLocal();
+  $("f-car").innerHTML = cars.map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(carTitle(c) + (c.plate ? " · " + c.plate : "")) + '</option>'; }).join("");
+  if (curCar) $("f-car").value = curCar;
+  setType(null); clearPhoto("dash"); clearPhoto("bank");
+  $("form-h").textContent = "تعبئة جديدة"; $("save").textContent = "حفظ التعبئة"; $("cancel").hidden = true;
+  $("form-err").hidden = true;
+}
+function showErr(t){ var e = $("form-err"); e.textContent = t; e.hidden = false; }
+/* منع قراءة عداد أقل من المحفوظ: العداد لا ينقص مع الزمن. تُقارن القراءة بكل ما سُجِّل للسيارة (تعبئات، صيانة، تحديثات العداد):
+   لا تقل عن أعلى قراءة أقدم منها تاريخاً، ولا تزيد على أقل قراءة أحدث منها. يُستثنى السجل نفسه عند التعديل */
+function odoCheck(carId, ts, odo, kind, skipId){
+  var car = cars.find(function(c){ return c.id === carId; }), mine = String(ts || ""), day = mine.slice(0,10), lo = null, hi = null;
+  function see(o, t){
+    if (o == null || !t) return; t = String(t);
+    var d = t.slice(0,10), rel = d < day ? -1 : d > day ? 1 : (t.length > 10 && mine.length > 10 ? (t < mine ? -1 : t > mine ? 1 : 0) : 0);
+    if (rel < 0 && (lo == null || o > lo)) lo = o;
+    if (rel > 0 && (hi == null || o < hi)) hi = o;
+  }
+  fills.forEach(function(f){ if (f.carId === carId && !(kind === "f" && f.id === skipId)) see(f.odo, f.ts); });
+  services.forEach(function(s){ if (s.carId === carId && !(kind === "s" && s.id === skipId)) see(s.odo, s.ts); });
+  if (car){ (car.odoLog || []).forEach(function(p){ see(p.o, p.t); }); if (car.odoNow != null) see(car.odoNow, car.odoAt); }
+  if (lo != null && odo < lo) return "قراءة العداد أقل من المحفوظ في البرنامج (" + fmt(lo) + " كم). العداد لا ينقص، راجع الرقم.";
+  if (hi != null && odo > hi) return "قراءة العداد أعلى من قراءة محفوظة بتاريخ أحدث (" + fmt(hi) + " كم). راجع الرقم أو التاريخ.";
+  return "";
+}
+
+function saveLocal(){ try { localStorage.setItem(LS, JSON.stringify({fills:fills.map(clean), prices:prices, services:services, itemCfg:itemCfg, cars:cars})); } catch(e){} }
+function clean(f){ return {id:f.id, ts:f.ts, amount:f.amount, odo:f.odo, range:f.range, avg:f.avg, avgUnit:f.avgUnit, type:f.type, price:f.price, pay:f.pay || "card", carId:f.carId || null}; }
+function cashNote(){
+  var st = $("bank-status"), a = num($("amount").value);
+  st.className = "pstat ok"; st.textContent = "دفع كاش" + (a > 0 ? ": " + fmt(a, a % 1 ? 2 : 0) + " ريال" : "");
+}
+$("cash-open").addEventListener("click", function(){
+  var a = num($("amount").value);
+  $("c-amount").value = a > 0 ? a : ""; $("c-when").value = $("when").value || nowLocal();
+  $("c-err").hidden = true;
+  var d = $("cash-dlg");
+  try { d.showModal(); } catch(e){ d.setAttribute("open", ""); }
+  $("c-amount").focus();
+});
+$("cash-cancel").addEventListener("click", function(){ $("cash-dlg").close(); });
+$("cash-form").addEventListener("submit", function(ev){
+  ev.preventDefault();
+  var a = num($("c-amount").value), ts = $("c-when").value, e = $("c-err");
+  if (!(a > 0)){ e.textContent = "أدخل المبلغ بالريال."; e.hidden = false; return; }
+  if (!ts){ e.textContent = "حدّد التاريخ والوقت."; e.hidden = false; return; }
+  $("amount").value = a; $("when").value = ts; payMethod = "cash";
+  $("bank-img").hidden = true; $("bank-img").removeAttribute("src"); $("bank-cap").hidden = false; $("bank-file").value = "";
+  cashNote(); litersHint();
+  $("cash-dlg").close();
+});
+
+$("form").addEventListener("submit", async function(ev){
+  ev.preventDefault();
+  $("form-err").hidden = true;
+  var amount = num($("amount").value), odo = num($("odo").value), range = num($("range").value), avg = num($("avg").value), ts = $("when").value;
+  if (!curCar) return showErr("أضف بيانات السيارة أولاً.");
+  if (!fuelType) return showErr("اختر نوع البنزين: 91 أو 95، أو اكتب نوعاً آخر.");
+  if (!(amount > 0)) return showErr("أدخل المبلغ بالريال.");
+  if (!ts) return showErr("حدّد التاريخ والوقت.");
+  if (!(odo > 0)) return showErr("قراءة العداد إجبارية. اكتبها أو صوّر الطبلون.");
+  var data = {ts:ts, amount:amount, odo:odo, range:range, avg:avg, avgUnit:avg != null ? $("avg-unit").value : null,
+              type:fuelType === "other" ? $("type-other").value.trim().slice(0, 20) : fuelType, price:curPrice(), pay:payMethod, carId:$("f-car").value || curCar};
+  var oErr = odoCheck(data.carId, ts, odo, "f", editingId); if (oErr) return showErr(oErr);
+  /* لا تُقبل تعبئة مكررة: نفس السيارة بنفس العداد والمبلغ، أو بنفس الوقت والمبلغ */
+  if (fills.some(function(f){ return f.id !== editingId && f.carId === data.carId && (f.odo === odo || (f.ts === ts && f.amount === amount)); }))
+    return showErr("توجد تعبئة مسجَّلة لهذه السيارة عند نفس قراءة العداد. العداد يجب أن يتغيّر بين تعبئة وأخرى، ولتصحيح تعبئة سابقة عدّلها من سجل التعبئات.");
+  var btn = $("save"); btn.disabled = true;
+  try {
+    if (db){
+      var ref = editingId ? db.doc("fills/" + editingId) : db.collection("fills").doc();
+      await ref.set(data);
+    } else {
+      if (editingId){ fills = fills.map(function(f){ return f.id === editingId ? Object.assign({id:editingId}, data) : f; }); }
+      else fills.push(Object.assign({id:"l" + Date.now()}, data));
+      saveLocal(); render();
+    }
+    resetForm();
+    $("fill-dlg").close();
+  } catch(e){
+    showErr(e && e.code === "quota_exceeded" ? "امتلأت مساحة التخزين. احذف تعبئات قديمة ثم أعد المحاولة."
+      : e && e.code === "invalid_argument" ? "لا تملك صلاحية الحفظ في هذه الصفحة."
+      : "تعذّر الحفظ. تحقق من الاتصال ثم أعد المحاولة.");
+  } finally { btn.disabled = false; }
+});
+/* تصوير العداد من الصفحة الرئيسية: تُقرأ الصورة ثم يختار المستخدم الخدمة التي تُسجَّل عليها القراءة */
+var snapOdo = null, snapExtra = null;
+$("snap-row").addEventListener("click", function(ev){ if (!cars.length){ ev.preventDefault(); openCar(null, false); } });
+$("snap-file").addEventListener("change", async function(){
+  var file = this.files && this.files[0]; this.value = ""; if (!file) return;
+  if (!curCar){ gate(); if (!curCar) return; }
+  snapExtra = null; $("snap-odo").value = "";
+  var d = $("snap-dlg"), msg = $("snap-msg");
+  try { d.showModal(); } catch(e){ d.setAttribute("open", ""); }
+  var s = await sampleReady;
+  if (!s || !canImages){ msg.textContent = "القراءة التلقائية غير متاحة هنا. اكتب العداد يدوياً ثم اختر الخدمة."; return; }
+  msg.innerHTML = '<span class="spin"></span>جارٍ قراءة الصورة…';
+  try {
+    var r = await s.json(prompt("dash"), {images:[file], cache:false}), o = r && num(r.odometer_km);
+    if (!d.open) return;
+    if (o != null && o > 0){
+      if (!$("snap-odo").value) $("snap-odo").value = Math.round(o);
+      snapExtra = {range:num(r.range_km), avg:num(r.avg_value), unit:r.avg_unit};
+      msg.textContent = "قُرئ العداد " + fmt(o) + " كم. راجعه ثم اختر الخدمة.";
+    } else msg.textContent = "لم يظهر العداد بوضوح. اكتبه يدوياً ثم اختر الخدمة.";
+  } catch(e){ msg.textContent = "تعذّرت قراءة الصورة. اكتب العداد يدوياً ثم اختر الخدمة."; }
+});
+function snapValue(){
+  var v = num($("snap-odo").value);
+  if (!(v > 0)){ $("snap-msg").textContent = "اكتب قراءة العداد بالكيلومتر أولاً."; return null; }
+  var oErr = odoCheck(curCar, nowLocal(), Math.round(v), "o", null);
+  if (oErr){ $("snap-msg").textContent = oErr; return null; }
+  return Math.round(v);
+}
+$("snap-cancel").addEventListener("click", function(){ $("snap-dlg").close(); });
+/* إدخال العداد يدوياً ثم اختيار الخدمة، بلا صورة (تستدعيه الصفحة الرئيسية في النسخة المستقلة) */
+$("snap-dlg").addEventListener("snap-manual", function(){
+  if (!cars.length){ openCar(null, false); return; }
+  if (!curCar){ gate(); if (!curCar) return; }
+  snapExtra = null; $("snap-odo").value = "";
+  $("snap-msg").textContent = "اكتب قراءة العداد ثم اختر نوع المصروف.";
+  var d = $("snap-dlg"); try { d.showModal(); } catch(e){ d.setAttribute("open", ""); }
+  try { $("snap-odo").focus(); } catch(e){}
+});
+$("snap-fill").addEventListener("click", function(){
+  var v = snapValue(); if (v == null) return;
+  $("snap-dlg").close(); resetForm(); openFill();
+  $("odo").value = v;
+  var x = snapExtra || {}, got = ["العداد " + fmt(v) + " كم"];
+  if (x.range != null && x.range >= 0){ $("range").value = Math.round(x.range); got.push("المتبقي " + fmt(x.range) + " كم"); }
+  if (x.avg != null && x.avg > 0){ $("avg").value = x.avg; if (x.unit === "l/100km" || x.unit === "km/l") $("avg-unit").value = x.unit; got.push("المتوسط " + x.avg); }
+  $("dash-status").className = "pstat ok"; $("dash-status").textContent = "من صورة العداد: " + got.join("، ");
+});
+$("snap-mnt").addEventListener("click", function(){
+  var v = snapValue(); if (v == null) return;
+  $("snap-dlg").close(); $("mnt-open").click();
+  snapOdo = v;
+  $("odo-msg").textContent = "قراءة العداد المصوَّرة " + fmt(v) + " كم ستُملأ في البند الذي تختاره.";
+});
+function openFill(){
+  var d = $("fill-dlg");
+  if (!d.open){ try { d.showModal(); } catch(e){ d.setAttribute("open", ""); } }
+  d.scrollTop = 0;
+}
+$("fill-open").addEventListener("click", function(){
+  if (!cars.length){ openCar(null, false); return; }
+  if (!curCar){ gate(); return; }
+  resetForm(); openFill();
+});
+$("fill-close").addEventListener("click", function(){ resetForm(); $("fill-dlg").close(); });
+$("cancel").addEventListener("click", function(){ resetForm(); $("fill-dlg").close(); });
+$("type-91").addEventListener("click", function(){ setType(91); });
+$("type-95").addEventListener("click", function(){ setType(95); });
+$("amount").addEventListener("input", litersHint);
+$("type-other").addEventListener("input", function(){
+  var v = this.value.trim();
+  fuelType = v ? "other" : null;
+  $("type-91").setAttribute("aria-pressed", "false"); $("type-95").setAttribute("aria-pressed", "false");
+  $("type-other-price").hidden = !v; litersHint();
+});
+$("type-other-price").addEventListener("input", litersHint);
+
+$("log").addEventListener("click", async function(ev){
+  var b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.edit){
+    var f = fills.find(function(x){ return x.id === b.dataset.edit; }); if (!f) return;
+    resetForm(); editingId = f.id;
+    $("amount").value = f.amount; $("odo").value = f.odo != null ? f.odo : ""; $("range").value = f.range != null ? f.range : "";
+    $("avg").value = f.avg != null ? f.avg : ""; $("avg-unit").value = f.avgUnit || "km/l"; $("when").value = f.ts; setType(f.type); if (f.carId) $("f-car").value = f.carId;
+    if (fuelType === "other"){ $("type-other-price").value = f.price || ""; litersHint(); }
+    payMethod = f.pay === "cash" ? "cash" : "card"; if (payMethod === "cash") cashNote();
+    $("form-h").textContent = "تعديل تعبئة"; $("save").textContent = "حفظ التعديل"; $("cancel").hidden = false;
+    openFill();
+  } else if (b.dataset.del){
+    if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد الحذف"; setTimeout(function(){ if (b.isConnected){ delete b.dataset.sure; b.textContent = "حذف"; } }, 4000); return; }
+    b.disabled = true;
+    var id = b.dataset.del;
+    try {
+      if (db) await db.doc("fills/" + id).delete();
+      else { fills = fills.filter(function(x){ return x.id !== id; }); saveLocal(); render(); }
+      if (editingId === id) resetForm();
+    } catch(e){ b.disabled = false; b.textContent = "تعذّر الحذف"; }
+  }
+});
+
+/* ---------- maintenance ---------- */
+var dayFmt = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {day:"numeric", month:"short", year:"numeric"});
+function dayOf(ts){ return new Date(String(ts).slice(0,10) + "T12:00"); }
+function items(){
+  var out = [];
+  DEF_ITEMS.forEach(function(d){
+    var c = itemCfg[d.id];
+    /* زيت المحرك بند أساسي: يبقى ظاهراً حتى لو حُذف سابقاً ويعود لمدته الأصلية */
+    if (c && c.hidden){ if (d.id !== "oil") return; c = null; }
+    out.push(Object.assign({}, d, c || {}, {id:d.id}));
+  });
+  Object.keys(itemCfg).forEach(function(id){
+    if (!DEF_ITEMS.some(function(d){ return d.id === id; }) && !itemCfg[id].hidden) out.push(Object.assign({}, itemCfg[id], {id:id}));
+  });
+  return out;
+}
+function itemName(id){
+  var c = itemCfg[id], d = DEF_ITEMS.find(function(x){ return x.id === id; });
+  return (c && c.name) || (d && d.name) || "بند محذوف";
+}
+function curOdo(){
+  var m = null;
+  F().concat(S()).forEach(function(x){ if (x.odo != null && (m == null || x.odo > m)) m = x.odo; });
+  /* قراءة العداد المحدَّثة يدوياً من نافذة الصيانة تُحتسب إن كانت أحدث من السجلات */
+  var c = cars.find(function(x){ return x.id === curCar; });
+  if (c && c.odoNow != null && (m == null || c.odoNow > m)) m = c.odoNow;
+  return m;
+}
+function every(it){
+  var p = [];
+  if (it.km > 0) p.push(fmt(it.km) + " كم");
+  if (it.months > 0) p.push(it.months + " شهر");
+  return p.length ? "كل " + p.join(" أو ") : "";
+}
+function renderMnt(){
+  var sv = S(), odo = curOdo(), now = new Date(), rank = {over:0, soon:1, ok:2, none:3}, nOver = 0, nSoon = 0;
+  var rows = items().map(function(it){
+    var last = null;
+    sv.forEach(function(s){ if (s.itemId === it.id && (!last || s.ts > last.ts)) last = s; });
+    var st = "none", parts = [], frac = 0;
+    if (last){
+      var over = false;
+      if (it.km > 0 && last.odo != null && odo != null){
+        var left = last.odo + it.km - odo;
+        frac = Math.max(frac, (odo - last.odo) / it.km);
+        if (left <= 0){ over = true; parts.push("تجاوز " + fmt(-left) + " كم"); } else parts.push("متبقٍ " + fmt(left) + " كم");
+      }
+      if (it.months > 0){
+        var from = dayOf(last.ts), due = dayOf(last.ts); due.setMonth(due.getMonth() + Number(it.months));
+        var days = Math.ceil((due - now) / 864e5), total = Math.max(1, (due - from) / 864e5);
+        frac = Math.max(frac, 1 - days / total);
+        if (days <= 0){ over = true; parts.push("تجاوز الموعد بـ " + (-days) + " يوم"); }
+        else parts.push(days > 60 ? "متبقٍ " + Math.round(days / 30) + " شهر" : "متبقٍ " + days + " يوم");
+      }
+      if (!parts.length) parts.push("سجّل قراءة العداد ليُحسب المتبقي");
+      st = over ? "over" : frac >= 0.85 ? "soon" : "ok";
+    }
+    if (st === "over") nOver++; else if (st === "soon") nSoon++;
+    return {it:it, last:last, st:st, parts:parts, frac:Math.min(1, Math.max(0, frac))};
+  }).sort(function(a, b){ return (a.it.id === "oil" ? -1 : 0) - (b.it.id === "oil" ? -1 : 0) || rank[a.st] - rank[b.st]; });
+
+  var label = {over:"مستحق الآن", soon:"قريباً", ok:"سليم", none:"غير مسجَّل"};
+  var oil = rows.find(function(r){ return r.it.id === "oil"; });
+  $("oil-card").hidden = !oil;
+  if (oil){
+    $("oil-card").innerHTML = '<div class="top" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<h2>' + esc(oil.it.name) + '</h2><span class="pill ' + oil.st + '">' + label[oil.st] + '</span></div>' +
+      (oil.last
+        ? '<div class="left" style="font-size:1.1rem;font-weight:700">' + esc(oil.parts.join(" · ")) + '</div>' +
+          '<div class="prog ' + oil.st + '" style="height:10px"><i style="width:' + Math.round(oil.frac * 100) + '%"></i></div>' +
+          '<div class="when">آخر تغيير ' + esc(dayFmt.format(dayOf(oil.last.ts))) + (oil.last.odo != null ? " عند " + fmt(oil.last.odo) + " كم" : "") +
+          (every(oil.it) ? " · " + esc(every(oil.it)) : "") + '</div>'
+        : '<p class="hint">لم يُسجَّل تغيير الزيت بعد. سجّله من «الصيانة والاستهلاكيات» ليظهر المتبقي هنا.</p>');
+  }
+  $("mnt").innerHTML = rows.length ? rows.map(function(r){
+    var it = r.it, sub = r.last
+      ? "آخر تغيير " + dayFmt.format(dayOf(r.last.ts)) + (r.last.odo != null ? " عند " + fmt(r.last.odo) + " كم" : "")
+      : "سجّل آخر تغيير لتبدأ المتابعة";
+    return '<article class="item ' + r.st + '"><div class="top"><span class="nm">' + esc(it.name) + '</span><span class="pill ' + r.st + '">' + label[r.st] + '</span></div>' +
+      (r.last ? '<div class="left">' + esc(r.parts.join(" · ")) + '</div><div class="prog ' + r.st + '"><i style="width:' + Math.round(r.frac * 100) + '%"></i></div>' : "") +
+      '<div class="when">' + esc(sub) + (every(it) ? " · " + esc(every(it)) : "") + (warrantyText(r.last) ? "<br>" + esc(warrantyText(r.last)) : "") + '</div>' +
+      '<div class="row"><button type="button" class="btn sm" data-done="' + esc(it.id) + '">تسجيل تغيير</button>' +
+      (r.last && r.last.invoice ? '<button type="button" class="btn sm" data-inv="' + esc(r.last.invoice) + '">فاتورة الضمان</button>' : "") +
+      (r.last ? '<button type="button" class="btn sm" data-hist="' + esc(it.id) + '">السجل السابق</button>' : "") +
+      '<button type="button" class="btn sm" data-cfg="' + esc(it.id) + '">تعديل المدة</button></div><div class="hist" hidden></div></article>';
+  }).join("") : '<p class="empty">لا توجد بنود. أضف بنداً جديداً.</p>';
+
+  $("mnt-sum").textContent = nOver || nSoon ? [nOver ? nOver + " مستحق الآن" : "", nSoon ? nSoon + " قريباً" : ""].filter(Boolean).join(" · ")
+    : sv.length ? "لا يوجد بند مستحق" : "اضغط لتسجيل تغيير الزيت وباقي البنود";
+  $("mnt-sum").style.color = nOver ? "var(--r95)" : nSoon ? "var(--warn)" : "";
+  var yr = nowLocal().slice(0,4), cost = 0;
+  sv.forEach(function(s){ if (String(s.ts).slice(0,4) === yr && s.cost) cost += s.cost; });
+  var odoCar = cars.find(function(x){ return x.id === curCar; }), odoManual = odoCar && odoCar.odoNow != null && odoCar.odoNow === odo && odoCar.odoAt;
+  $("mnt-odo").textContent = (odo != null ? "العداد الحالي " + fmt(odo) + " كم" + (odoManual ? " (حُدِّث في " + dayFmt.format(dayOf(odoCar.odoAt)) + ")" : "") : "العداد الحالي يؤخذ من آخر تعبئة مسجلة") +
+    " · تكلفة الصيانة هذا العام " + fmt(cost, cost % 1 ? 2 : 0) + " ريال";
+
+  var hist = sv.slice().sort(function(a, b){ return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : (a.itemId === "oil" ? -1 : 0) - (b.itemId === "oil" ? -1 : 0); });
+  $("svc-log").innerHTML = hist.length ? hist.map(function(s){
+    var bits = [dayFmt.format(dayOf(s.ts))];
+    if (s.odo != null) bits.push(fmt(s.odo) + " كم");
+    if (s.cost) bits.push(fmt(s.cost, s.cost % 1 ? 2 : 0) + " ريال");
+    return '<article class="item"><div class="top"><span class="nm">' + esc(itemName(s.itemId)) + '</span>' +
+      '<span class="row">' + (s.invoice ? '<button type="button" class="btn sm" data-inv="' + esc(s.invoice) + '">الفاتورة</button>' : "") +
+      '<button type="button" class="btn sm" data-sedit="' + esc(s.id) + '">تعديل</button>' +
+      '<button type="button" class="btn sm danger" data-sdel="' + esc(s.id) + '">حذف</button></span></div>' +
+      '<div class="when">' + esc(bits.join(" · ")) + (s.note ? "<br>" + esc(s.note) : "") + (warrantyText(s) ? "<br>" + esc(warrantyText(s)) : "") + '</div></article>';
+  }).join("") : '<p class="empty">لا توجد صيانة مسجلة بعد.</p>';
+}
+function mErr(id, t){ var e = $(id); e.textContent = t; e.hidden = !t; }
+/* السجل السابق لبند: كل تغيير بتاريخه وعداده وتكلفته، ومع الزيت يُذكر أي الفلاتر تغيّرت معه */
+function histHtml(id, limit){
+  var all = S(), recs = all.filter(function(s){ return s.itemId === id; }).sort(function(a, b){ return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : (b.odo || 0) - (a.odo || 0); });
+  if (!recs.length) return '<p class="hint" style="margin:0">لا يوجد تغيير سابق مسجَّل لهذا البند.</p>';
+  var shown = limit ? recs.slice(0, limit) : recs;
+  return shown.map(function(s, i){
+    var bits = [dayFmt.format(dayOf(s.ts))];
+    if (s.odo != null) bits.push(fmt(s.odo) + " كم");
+    if (s.cost) bits.push(fmt(s.cost, s.cost % 1 ? 2 : 0) + " ريال");
+    var extra = "";
+    if (id === "oil"){
+      var fl = DEF_ITEMS.filter(function(x){ return /-filter$/.test(x.id); }).filter(function(x){
+        return all.some(function(o){ return o.itemId === x.id && o.ts === s.ts && o.odo === s.odo; });
+      }).map(function(x){ return itemName(x.id); });
+      extra = "<br>" + (fl.length ? "تغيّر معه: " + esc(fl.join("، ")) : "بدون تغيير فلاتر");
+    }
+    return '<div class="when" style="padding:6px 0;' + (i ? "border-top:1px solid var(--line)" : "") + '"><b>' + esc(bits.join(" · ")) + '</b>' + extra +
+      (s.note ? "<br>" + esc(s.note) : "") + '</div>';
+  }).join("") + (limit && recs.length > limit ? '<p class="hint" style="margin:4px 0 0">و' + (recs.length - limit) + ' تغيير أقدم في «السجل السابق» على البند.</p>' : "");
+}
+function closeSheets(){ $("sform").hidden = true; $("iform").hidden = true; sItem = null; sEdit = null; iEdit = null; }
+/* الفلاتر التي تُضاف مع تغيير الزيت: اختيارية كلها. عند التعديل تظهر المسجَّلة سابقاً مع نفس الزيارة محدَّدة ومقفلة */
+function fillWith(base){
+  /* الفلاتر تُعرض هنا دائماً، حتى لو حُذفت من القائمة كبنود مستقلة */
+  var withIds = sItem === "oil" ? DEF_ITEMS.filter(function(x){ return /-filter$/.test(x.id); }).map(function(x){ return {id:x.id, name:itemName(x.id)}; }) : [];
+  $("s-with").hidden = !withIds.length; $("s-with-list").textContent = "";
+  withIds.forEach(function(x){
+    var had = !!base && S().some(function(o){ return o.itemId === x.id && o.ts === base.ts && o.odo === base.odo; });
+    var lb = document.createElement("label"), cb = document.createElement("input");
+    lb.style.cssText = "display:flex;align-items:center;gap:8px;min-height:40px;font-weight:500";
+    cb.type = "checkbox"; cb.value = x.id; cb.checked = had; cb.disabled = had; cb.style.cssText = "width:22px;height:22px";
+    lb.appendChild(cb); lb.appendChild(document.createTextNode(x.name + (had ? " (مسجَّل)" : ""))); $("s-with-list").appendChild(lb);
+  });
+}
+function saveErr(e){
+  return e && e.code === "quota_exceeded" ? "امتلأت مساحة التخزين. احذف سجلات قديمة ثم أعد المحاولة."
+    : e && e.code === "invalid_argument" ? "لا تملك صلاحية الحفظ في هذه الصفحة." : "تعذّر الحفظ. تحقق من الاتصال ثم أعد المحاولة.";
+}
+$("mnt").addEventListener("click", function(ev){
+  var b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.inv){ showInv(b.dataset.inv); return; }
+  if (b.dataset.hist){
+    var hb = b.closest("article").querySelector(".hist");
+    hb.hidden = !hb.hidden; b.textContent = hb.hidden ? "السجل السابق" : "إخفاء السجل";
+    if (!hb.hidden) hb.innerHTML = histHtml(b.dataset.hist, 0);
+    return;
+  }
+  if (b.dataset.done){
+    closeSheets(); sItem = b.dataset.done;
+    $("s-warranty").value = ""; $("s-inv").value = ""; $("s-stk").value = ""; $("s-dash").value = ""; $("s-inv-hint").hidden = !!assets;
+    $("s-read").className = "pstat f wide"; $("s-read").textContent = "أضف صورة الستيكر أو الفاتورة لتُملأ الخانات تلقائياً، أو أدخلها يدوياً.";
+    $("s-title").textContent = "تسجيل تغيير: " + itemName(sItem);
+    fillWith(null);
+    $("s-prev").hidden = false; $("s-prev").innerHTML = '<b style="font-size:.9rem">التغييرات السابقة</b>' + histHtml(sItem, 3);
+    $("s-when").value = nowLocal().slice(0,10); var o = snapOdo != null ? snapOdo : curOdo(); $("s-odo").value = o != null ? o : "";
+    $("s-cost").value = ""; $("s-note").value = ""; mErr("s-err", "");
+    $("sform").hidden = false; $("sform").scrollIntoView({behavior:"smooth", block:"center"});
+  } else if (b.dataset.cfg){
+    closeSheets(); iEdit = b.dataset.cfg;
+    var it = items().find(function(x){ return x.id === iEdit; }); if (!it) return;
+    $("i-title").textContent = "تعديل: " + it.name;
+    $("i-name").value = it.name; $("i-km").value = it.km || 0; $("i-months").value = it.months || 0; mErr("i-err", "");
+    $("i-del").hidden = iEdit === "oil"; $("i-del").textContent = "حذف البند"; delete $("i-del").dataset.sure;
+    $("iform").hidden = false; $("iform").scrollIntoView({behavior:"smooth", block:"center"});
+  }
+});
+$("add-item").addEventListener("click", function(){
+  closeSheets(); iEdit = "c" + Date.now();
+  $("i-title").textContent = "إضافة بند"; $("i-name").value = ""; $("i-km").value = ""; $("i-months").value = ""; mErr("i-err", "");
+  $("i-del").hidden = true; $("iform").hidden = false; $("iform").scrollIntoView({behavior:"smooth", block:"center"});
+});
+/* ---------- تحليل الممشى: من قراءات العداد (تحديثات يدوية + تعبئات + صيانة) ---------- */
+function tripData(){
+  var car = cars.find(function(x){ return x.id === curCar; }), pts = [];
+  F().forEach(function(f){ if (f.odo != null) pts.push({d:String(f.ts).slice(0,10), o:f.odo}); });
+  S().forEach(function(s){ if (s.odo != null) pts.push({d:String(s.ts).slice(0,10), o:s.odo}); });
+  if (car){
+    (car.odoLog || []).forEach(function(p){ pts.push({d:String(p.t).slice(0,10), o:p.o}); });
+    if (car.odoNow != null && car.odoAt) pts.push({d:String(car.odoAt).slice(0,10), o:car.odoNow});
+  }
+  /* قراءة واحدة لكل يوم (الأعلى)، ثم استبعاد أي قراءة أقل مما قبلها */
+  var byDay = {}; pts.forEach(function(p){ if (/^\d{4}-\d\d-\d\d$/.test(p.d) && (byDay[p.d] == null || p.o > byDay[p.d])) byDay[p.d] = p.o; });
+  var days = Object.keys(byDay).sort(), out = [];
+  days.forEach(function(d){ if (!out.length || byDay[d] >= out[out.length - 1].o) out.push({d:d, o:byDay[d], t:dayOf(d).getTime()}); });
+  return out;
+}
+function tripCostPerKm(){
+  var arr = F().slice().sort(function(a, b){ return a.ts < b.ts ? -1 : 1; }), i0 = -1, i1 = -1, amt = 0, lit = 0, ok = true;
+  arr.forEach(function(f, i){ if (f.odo != null){ if (i0 < 0) i0 = i; i1 = i; } });
+  if (i0 < 0 || i1 <= i0 || arr[i1].odo <= arr[i0].odo) return null;
+  for (var q = i0; q < i1; q++){ amt += arr[q].amount; var p = Number(arr[q].price); if (p > 0) lit += arr[q].amount / p; else ok = false; }
+  var dist = arr[i1].odo - arr[i0].odo;
+  return {sar:amt / dist, lit:ok && lit > 0 ? lit / dist : null};
+}
+function tripOdoAt(pts, t){
+  if (t <= pts[0].t) return pts[0].o;
+  for (var i = 1; i < pts.length; i++){
+    if (t <= pts[i].t){ var a = pts[i - 1], b = pts[i]; return a.o + (b.o - a.o) * (t - a.t) / (b.t - a.t); }
+  }
+  return pts[pts.length - 1].o;
+}
+function tripStats(){
+  var pts = tripData(); if (pts.length < 2) return {pts:pts};
+  var last = pts[pts.length - 1], first = pts[0], D = 864e5, spanDays = Math.max(1, Math.round((last.t - first.t) / D));
+  function win(n){ var t0 = last.t - n * D; if (first.t > t0 + D * 0.5) return null; return (last.o - tripOdoAt(pts, t0)) / n; }
+  return {pts:pts, all:(last.o - first.o) / spanDays, spanDays:spanDays, total:last.o - first.o, w7:win(7), w30:win(30), cpk:tripCostPerKm(), last:last, first:first};
+}
+/* سجل القراءات: كل قراءة بتاريخها ووقتها ومصدرها. القراءة اليدوية يمكن حذفها إن أُدخلت خطأ */
+function renderTripLog(){
+  var car = cars.find(function(x){ return x.id === curCar; }), rows = [];
+  (car && car.odoLog || []).forEach(function(p, i){ rows.push({t:String(p.t), o:p.o, src:"تحديث العداد", i:i}); });
+  F().forEach(function(f){ if (f.odo != null) rows.push({t:String(f.ts), o:f.odo, src:"تعبئة بنزين"}); });
+  S().forEach(function(x){ if (x.odo != null) rows.push({t:String(x.ts), o:x.odo, src:"صيانة: " + itemName(x.itemId)}); });
+  if (car && car.odoNow != null && car.odoAt && !(car.odoLog || []).some(function(p){ return p.o === car.odoNow; })) rows.push({t:String(car.odoAt), o:car.odoNow, src:"تحديث العداد"});
+  rows.sort(function(a, b){ return a.t < b.t ? 1 : a.t > b.t ? -1 : b.o - a.o; });
+  if (!rows.length){ $("trip-log").innerHTML = '<p class="empty">لا توجد قراءات مسجَّلة بعد.</p>'; return; }
+  var tf = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {hour:"numeric", minute:"2-digit"});
+  $("trip-log").innerHTML = '<table class="trips"><thead><tr><th>التاريخ والوقت</th><th class="n">العداد (كم)</th><th>المصدر</th><th></th></tr></thead><tbody>' +
+    rows.map(function(r){
+      var hasTime = r.t.length > 10, d = hasTime ? new Date(r.t) : dayOf(r.t);
+      return '<tr><td>' + esc(dayFmt.format(d)) + (hasTime ? '<br><span class="hint">' + esc(tf.format(d)) + '</span>' : "") + '</td><td class="n"><b>' + fmt(r.o) + '</b></td><td>' + esc(r.src) + '</td><td class="n">' +
+        (r.i != null && !readOnly ? '<button type="button" class="btn sm danger" data-odel="' + r.i + '">حذف</button>' : "") + '</td></tr>';
+    }).join("") + '</tbody></table>';
+}
+$("trip-log").addEventListener("click", async function(e){
+  var b = e.target.closest("button[data-odel]"); if (!b) return;
+  if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد الحذف"; return; }
+  var car = cars.find(function(x){ return x.id === curCar; }); if (!car) return;
+  var log = (car.odoLog || []).slice(); log.splice(Number(b.dataset.odel), 1);
+  var top = null; log.forEach(function(p){ if (!top || p.o > top.o) top = p; });
+  var data = Object.assign({}, car, {odoLog:log, odoNow:top ? top.o : null, odoAt:top ? String(top.t).slice(0,10) : null}); delete data.id;
+  b.disabled = true;
+  try {
+    if (db) await db.doc("cars/" + car.id).set(data);
+    cars = cars.map(function(c){ return c.id === car.id ? Object.assign({id:car.id}, data) : c; });
+    if (!db) saveLocal();
+    render();
+  } catch(err){ b.disabled = false; b.textContent = "تعذّر الحذف"; }
+});
+function renderTrips(){
+  renderTripLog();
+  var s = tripStats(), sum = $("trip-sum"), box = $("trip-stats"), list = $("trip-list"), note = $("trip-note");
+  if (!s.all && s.all !== 0){
+    sum.textContent = "تظهر بعد قراءتين للعداد في يومين مختلفين";
+    box.innerHTML = ""; note.textContent = "";
+    list.innerHTML = '<p class="empty">سجّل قراءة العداد في يومين مختلفين على الأقل (من «تحديث العداد» أو مع تعبئة أو صيانة) ليظهر التحليل.</p>';
+    return;
+  }
+  var rate = s.w7 != null ? s.w7 : s.all, c = s.cpk, f1 = function(v){ return fmt(v, v < 10 ? 1 : 0); };
+  var sar = c ? rate * c.sar : null;
+  sum.textContent = "نحو " + f1(rate) + " كم يومياً" + (sar != null ? " · بنزين ≈ " + fmt(sar, 1) + " ريال يومياً" : "");
+  note.textContent = "من " + dayFmt.format(dayOf(s.first.d)) + " إلى " + dayFmt.format(dayOf(s.last.d)) + " · " + s.pts.length + " قراءة · " + fmt(s.total) + " كم في " + s.spanDays + " يوم";
+  function tile(k, v, u, main){ return '<div class="stat' + (main ? " main" : "") + '"><span class="k">' + k + '</span><span class="v">' + v + '</span><span class="u">' + u + '</span></div>'; }
+  var h = tile("الممشى اليومي", f1(rate), s.w7 != null ? "كم يومياً · آخر 7 أيام" : "كم يومياً · كل الفترة", true) +
+    tile("صرف البنزين اليومي", sar != null ? fmt(sar, 1) : "—", sar != null ? "ريال يومياً تقريباً" : "يظهر بعد تعبئتين", false) +
+    tile("متوسط آخر 30 يوماً", s.w30 != null ? f1(s.w30) : "—", s.w30 != null ? "كم يومياً" : "يحتاج قراءات على 30 يوماً", false) +
+    tile("متوسط كل الفترة", f1(s.all), "كم يومياً", false) +
+    tile("الممشى الشهري المتوقع", fmt(rate * 30), "كم في 30 يوماً", false) +
+    tile("البنزين الشهري المتوقع", sar != null ? fmt(sar * 30) : "—", sar != null ? "ريال في 30 يوماً" + (c.lit ? " · ≈ " + fmt(rate * 30 * c.lit) + " لتر" : "") : "يظهر بعد تعبئتين", false);
+  /* موعد تغيير الزيت المتوقع بهذا المعدل */
+  var oil = items().find(function(x){ return x.id === "oil"; }), lastOil = null, odo = curOdo();
+  S().forEach(function(x){ if (x.itemId === "oil" && (!lastOil || x.ts > lastOil.ts)) lastOil = x; });
+  if (oil && oil.km > 0 && lastOil && lastOil.odo != null && odo != null && rate > 0){
+    var left = lastOil.odo + oil.km - odo;
+    if (left > 0){ var dd = Math.round(left / rate), when = new Date(Date.now() + dd * 864e5); h += tile("تغيير الزيت القادم", "بعد " + dd + " يوم", "تقريباً في " + dayFmt.format(when) + " · متبقٍ " + fmt(left) + " كم", false).replace('class="stat"', 'class="stat" style="grid-column:1 / -1"'); }
+  }
+  box.innerHTML = h;
+  var rows = "", shortDay = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {day:"numeric", month:"short"});
+  for (var i = s.pts.length - 1; i >= 1; i--){
+    var a = s.pts[i - 1], b = s.pts[i], n = Math.max(1, Math.round((b.t - a.t) / 864e5)), km = b.o - a.o;
+    rows += '<tr><td>' + esc(shortDay.format(dayOf(a.d))) + ' ← ' + esc(shortDay.format(dayOf(b.d))) + '<br><span class="hint">' + n + ' يوم · العداد ' + fmt(b.o) + '</span></td>' +
+      '<td class="n">' + fmt(km) + '</td><td class="n">' + f1(km / n) + '</td><td class="n">' + (c ? fmt(km * c.sar, km * c.sar < 100 ? 1 : 0) : "—") + '</td></tr>';
+  }
+  list.innerHTML = '<table class="trips"><thead><tr><th>الفترة</th><th class="n">كم</th><th class="n">كم/يوم</th><th class="n">بنزين ≈ ريال</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+$("trip-open").addEventListener("click", function(){
+  renderTrips();
+  var d = $("trip-dlg");
+  try { d.showModal(); } catch(e){ d.setAttribute("open", ""); }
+  d.scrollTop = 0;
+});
+$("trip-close").addEventListener("click", function(){ $("trip-dlg").close(); });
+$("trip-odo").addEventListener("click", function(){ $("trip-dlg").close(); $("mnt-open").click(); $("odo-open").click(); });
+$("mnt-open").addEventListener("click", function(){
+  if (!cars.length){ openCar(null, false); return; }
+  closeSheets();
+  var d = $("mnt-dlg");
+  try { d.showModal(); } catch(e){ d.setAttribute("open", ""); }
+  d.scrollTop = 0;
+});
+$("mnt-close").addEventListener("click", function(){ closeSheets(); $("mnt-dlg").close(); });
+$("mnt-dlg").addEventListener("close", function(){ snapOdo = null; });
+$("inv-close").addEventListener("click", function(){ $("inv-dlg").close(); });
+$("s-cancel").addEventListener("click", closeSheets);
+$("i-cancel").addEventListener("click", closeSheets);
+$("sform").addEventListener("submit", async function(ev){
+  ev.preventDefault();
+  var ts = $("s-when").value, odo = num($("s-odo").value), cost = num($("s-cost").value), note = $("s-note").value.trim().slice(0, 200);
+  if (!sItem) return;
+  if (!ts) return mErr("s-err", "حدّد تاريخ التغيير.");
+  if (!(odo > 0)) return mErr("s-err", "قراءة العداد إجبارية. اكتبها أو صوّر العداد.");
+  var oldRec = sEdit ? services.find(function(x){ return x.id === sEdit; }) : null;
+  if (!(cost > 0) && !(oldRec && oldRec.cost == null)) return mErr("s-err", "أدخل مبلغ التكلفة بالريال.");
+  var wm = num($("s-warranty").value), file = $("s-inv").files && $("s-inv").files[0];
+  if (!curCar) return mErr("s-err", "أضف بيانات السيارة أولاً.");
+  var carOf = oldRec ? oldRec.carId : curCar;
+  var oErr = odoCheck(carOf, ts, odo, "s", sEdit); if (oErr) return mErr("s-err", oErr);
+  /* لا يُقبل تكرار: نفس البند لنفس السيارة عند نفس قراءة العداد */
+  if (services.some(function(x){ return x.id !== sEdit && x.carId === carOf && x.itemId === sItem && x.odo === odo; }))
+    return mErr("s-err", "يوجد تغيير مسجَّل لهذا البند عند نفس قراءة العداد. العداد يجب أن يتغيّر، ولتصحيح التغيير السابق اضغط «تعديل» عليه في السجل.");
+  var data = {carId:carOf, itemId:sItem, ts:ts, odo:odo, cost:cost > 0 ? cost : null, note:note, warranty:wm > 0 ? Math.round(wm) : null, invoice:oldRec && oldRec.invoice || null};
+  var btn = $("s-save"); btn.disabled = true; mErr("s-err", "");
+  if (file && assets){
+    btn.textContent = "جارٍ رفع الفاتورة…";
+    try { var up = await assets.upload(await toJpeg(file)); data.invoice = up.id; }
+    catch(e){
+      btn.disabled = false; btn.textContent = "حفظ التغيير";
+      return mErr("s-err", e && e.code === "too_large" ? "صورة الفاتورة أكبر من الحد المسموح. اختر صورة أصغر."
+        : e && e.code === "unsupported_type" ? "صيغة الصورة غير مدعومة. استخدم JPG أو PNG."
+        : e && e.code === "quota_or_state" ? "امتلأت مساحة حفظ الصور. احذف فواتير قديمة ثم أعد المحاولة."
+        : "تعذّر رفع صورة الفاتورة. أعد المحاولة أو احفظ بدون صورة.");
+    }
+    btn.textContent = "حفظ التغيير";
+  }
+  try {
+    var extra = sItem === "oil" ? [].slice.call($("s-with-list").querySelectorAll("input:checked:not(:disabled)")).map(function(c){ return c.value; }) : [];
+    var all = extra.filter(function(id){
+      return !services.some(function(x){ return x.carId === carOf && x.itemId === id && x.odo === odo; });
+    }).map(function(id){
+      return Object.assign({}, data, {itemId:id, cost:null, note:"مع تغيير الزيت"});
+    });
+    if (!sEdit) all.unshift(data);
+    if (db){
+      if (sEdit) await db.doc("services/" + sEdit).set(data);
+      for (var w = 0; w < all.length; w++) await db.collection("services").doc().set(all[w]);
+    } else {
+      if (oldRec) Object.assign(oldRec, data);
+      all.forEach(function(d, w){ services.push(Object.assign({id:"s" + Date.now() + "-" + w}, d)); }); saveLocal(); render();
+    }
+    closeSheets();
+  } catch(e){ mErr("s-err", saveErr(e)); } finally { btn.disabled = false; }
+});
+async function saveItem(id, data){
+  if (db) await db.doc("items/" + id).set(data);
+  else { itemCfg[id] = data; saveLocal(); render(); }
+}
+$("iform").addEventListener("submit", async function(ev){
+  ev.preventDefault();
+  var name = $("i-name").value.trim().slice(0, 60), km = num($("i-km").value) || 0, months = num($("i-months").value) || 0;
+  if (!iEdit) return;
+  if (!name) return mErr("i-err", "اكتب اسم البند.");
+  if (km < 0 || months < 0 || (!km && !months)) return mErr("i-err", "حدّد المدة بالكيلومترات أو بالأشهر.");
+  var btn = $("i-save"); btn.disabled = true;
+  try { await saveItem(iEdit, {name:name, km:Math.round(km), months:Math.round(months)}); closeSheets(); }
+  catch(e){ mErr("i-err", saveErr(e)); } finally { btn.disabled = false; }
+});
+$("i-del").addEventListener("click", async function(){
+  var b = this; if (!iEdit) return;
+  if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد حذف البند"; return; }
+  try { await saveItem(iEdit, {name:itemName(iEdit), km:0, months:0, hidden:true}); closeSheets(); }
+  catch(e){ mErr("i-err", saveErr(e)); }
+});
+$("svc-log").addEventListener("click", async function(ev){
+  var b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.inv){ showInv(b.dataset.inv); return; }
+  if (b.dataset.sedit){
+    var rec = services.find(function(x){ return x.id === b.dataset.sedit; }); if (!rec) return;
+    closeSheets(); sItem = rec.itemId; sEdit = rec.id;
+    $("s-inv").value = ""; $("s-stk").value = ""; $("s-dash").value = ""; $("s-inv-hint").hidden = !!assets;
+    $("s-read").className = "pstat f wide"; $("s-read").textContent = "عدّل البيانات ثم احفظ." + (rec.invoice ? " الفاتورة المحفوظة تبقى إن لم تختر صورة جديدة." : "");
+    $("s-title").textContent = "تعديل تغيير: " + itemName(sItem);
+    fillWith(rec); $("s-prev").hidden = true;
+    $("s-when").value = String(rec.ts || "").slice(0,10); $("s-odo").value = rec.odo != null ? rec.odo : "";
+    $("s-cost").value = rec.cost != null ? rec.cost : ""; $("s-note").value = rec.note || ""; $("s-warranty").value = rec.warranty || ""; mErr("s-err", "");
+    $("sform").hidden = false; $("sform").scrollIntoView({behavior:"smooth", block:"center"});
+    return;
+  }
+  if (!b.dataset.sdel) return;
+  if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد الحذف"; setTimeout(function(){ if (b.isConnected){ delete b.dataset.sure; b.textContent = "حذف"; } }, 4000); return; }
+  b.disabled = true;
+  var id = b.dataset.sdel, old = services.find(function(x){ return x.id === id; });
+  try {
+    if (db){
+      await db.doc("services/" + id).delete();
+      if (old && old.invoice && assets && !services.some(function(x){ return x.id !== id && x.invoice === old.invoice; })) assets.delete(old.invoice).catch(function(){});
+    }
+    else { services = services.filter(function(x){ return x.id !== id; }); saveLocal(); render(); }
+  } catch(e){ b.disabled = false; b.textContent = "تعذّر الحذف"; }
+});
+
+/* ---------- cars ---------- */
+function gate(){
+  if (!(carsLoaded && loaded && svcLoaded)) return;
+  /* لا تُفتح نافذة السيارة تلقائياً: تُطلب فقط عند أول تسجيل */
+  if (!cars.length){ curCar = null; return; }
+  if (!curCar || !cars.some(function(c){ return c.id === curCar; })){
+    var st = null; try { st = localStorage.getItem(CUR); } catch(e){}
+    curCar = cars.some(function(c){ return c.id === st; }) ? st : cars[0].id;
+  }
+}
+function renderCars(){
+  $("cars").innerHTML = cars.map(function(c){
+    return '<button type="button" class="carchip" data-car="' + esc(c.id) + '" aria-pressed="' + (c.id === curCar) + '">' +
+      esc(carTitle(c)) + '<small>' + esc(c.plate || "") + '</small></button>';
+  }).join("") + '<button type="button" class="carchip add" data-car-add="1">+ إضافة سيارة</button>';
+  var c = cars.find(function(x){ return x.id === curCar; }), info = [], warn = false;
+  if (c){
+    if (c.color) info.push(c.color);
+    if (c.expiry){
+      var days = Math.ceil((dayOf(c.expiry) - new Date()) / 864e5); warn = days <= 30;
+      info.push((days < 0 ? "انتهت الاستمارة في " : "الاستمارة تنتهي في ") + dayFmt.format(dayOf(c.expiry)));
+    }
+  }
+  $("car-info").textContent = info.join(" · "); $("car-info").style.color = warn ? "var(--warn)" : "";
+  $("car-edit").hidden = !c;
+  var n = legacyCount();
+  $("legacy").hidden = !(n && c && !linking && carsLoaded && loaded && svcLoaded);
+  $("legacy-txt").textContent = n + " سجل قديم غير مرتبط بأي سيارة.";
+}
+function openCar(id, forced){
+  carEdit = id; carForced = !!forced;
+  var c = (id && cars.find(function(x){ return x.id === id; })) || {};
+  $("v-make").value = c.make || ""; $("v-model").value = c.model || ""; $("v-plate").value = c.plate || "";
+  $("v-year").value = c.year || ""; $("v-color").value = c.color || ""; $("v-vin").value = c.vin || ""; $("v-exp").value = c.expiry || "";
+  clearPhoto("reg"); mErr("v-err", "");
+  var n = legacyCount();
+  $("car-h").textContent = id ? "تعديل بيانات السيارة" : forced ? "أضف بيانات السيارة للبدء" : "إضافة سيارة";
+  $("car-note").textContent = forced && n
+    ? "لديك " + n + " سجل من النسخة السابقة قبل تقسيم السجلات حسب السيارة. أدخل بيانات السيارة وستُربط بها هذه السجلات."
+    : "صوّر الاستمارة لتُملأ البيانات تلقائياً، أو أدخلها يدوياً.";
+  $("car-cancel").hidden = carForced; $("car-del").hidden = !id; $("car-del").textContent = "حذف السيارة"; delete $("car-del").dataset.sure;
+  var d = $("car-dlg");
+  if (!d.open){ try { d.showModal(); } catch(e){ d.setAttribute("open", ""); } }
+  d.scrollTop = 0;
+}
+async function assignLegacy(id){
+  var lf = fills.filter(function(f){ return !f.carId; }), ls = services.filter(function(s){ return !s.carId; }), i;
+  if (!lf.length && !ls.length) return;
+  linking = true;
+  try {
+    if (db){
+      for (i = 0; i < lf.length; i++) await db.doc("fills/" + lf[i].id).update({carId:id});
+      for (i = 0; i < ls.length; i++) await db.doc("services/" + ls[i].id).update({carId:id});
+    } else {
+      lf.forEach(function(f){ f.carId = id; }); ls.forEach(function(s){ s.carId = id; }); saveLocal();
+    }
+  } finally { linking = false; render(); }
+}
+$("car-dlg").addEventListener("cancel", function(ev){ if (carForced) ev.preventDefault(); });
+$("car-cancel").addEventListener("click", function(){ $("car-dlg").close(); });
+$("car-edit").addEventListener("click", function(){ if (curCar) openCar(curCar, false); });
+$("cars").addEventListener("click", function(ev){
+  var b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.carAdd){ openCar(null, false); return; }
+  if (b.dataset.car && b.dataset.car !== curCar){ setCar(b.dataset.car); resetForm(); closeSheets(); render(); }
+});
+$("legacy-go").addEventListener("click", function(){
+  if (curCar) assignLegacy(curCar).catch(function(){ $("legacy-txt").textContent = "تعذّر ربط السجلات. أعد المحاولة."; });
+});
+$("car-form").addEventListener("submit", async function(ev){
+  ev.preventDefault();
+  var make = $("v-make").value.trim().slice(0, 60), plate = $("v-plate").value.trim().slice(0, 30), y = num($("v-year").value);
+  if (!make) return mErr("v-err", "اكتب ماركة السيارة.");
+  if (!plate) return mErr("v-err", "اكتب رقم اللوحة.");
+  if (y != null && !(y >= 1950 && y <= 2100)) return mErr("v-err", "سنة الصنع غير صحيحة.");
+  var data = {make:make, model:$("v-model").value.trim().slice(0, 60), year:y, plate:plate, color:$("v-color").value.trim().slice(0, 30),
+              vin:$("v-vin").value.trim().slice(0, 30), expiry:$("v-exp").value || null,
+              created:(carEdit && (cars.find(function(c){ return c.id === carEdit; }) || {}).created) || Date.now()};
+  var keepOdo = carEdit ? cars.find(function(c){ return c.id === carEdit; }) : null;
+  if (keepOdo && keepOdo.odoNow != null){ data.odoNow = keepOdo.odoNow; data.odoAt = keepOdo.odoAt || null; }
+  if (keepOdo && keepOdo.odoLog) data.odoLog = keepOdo.odoLog;
+  var btn = $("car-save"), isNew = !carEdit, wasEmpty = !cars.length, id;
+  btn.disabled = true; mErr("v-err", "");
+  try {
+    if (db){
+      var ref = carEdit ? db.doc("cars/" + carEdit) : db.collection("cars").doc();
+      id = ref.id; await ref.set(data);
+    } else id = carEdit || "car" + Date.now();
+    var row = Object.assign({id:id}, data);
+    if (cars.some(function(c){ return c.id === id; })) cars = cars.map(function(c){ return c.id === id ? row : c; });
+    else cars = cars.concat([row]);
+    if (!db) saveLocal();
+    if (isNew){ setCar(id); resetForm(); closeSheets(); }
+    carForced = false; $("car-dlg").close(); render();
+    if (isNew && wasEmpty) await assignLegacy(id);
+  } catch(e){ mErr("v-err", saveErr(e)); } finally { btn.disabled = false; }
+});
+$("car-del").addEventListener("click", async function(){
+  var b = this, id = carEdit; if (!id) return;
+  var used = fills.some(function(f){ return f.carId === id; }) || services.some(function(s){ return s.carId === id; });
+  if (used) return mErr("v-err", "لهذه السيارة سجلات محفوظة. احذف سجلاتها أولاً ثم احذف السيارة.");
+  if (!b.dataset.sure){ b.dataset.sure = "1"; b.textContent = "تأكيد حذف السيارة"; return; }
+  try {
+    if (db) await db.doc("cars/" + id).delete();
+    cars = cars.filter(function(c){ return c.id !== id; });
+    if (!db) saveLocal();
+    if (curCar === id) curCar = null;
+    $("car-dlg").close(); render();
+  } catch(e){ mErr("v-err", "تعذّر حذف السيارة. أعد المحاولة."); }
+});
+
+/* ---------- prices ---------- */
+function showPrices(){ $("p91").value = prices[91]; $("p95").value = prices[95]; litersHint(); }
+$("save-prices").addEventListener("click", async function(){
+  var a = num($("p91").value), b = num($("p95").value), m = $("prices-msg");
+  if (!(a > 0) || !(b > 0)){ m.textContent = "أدخل سعراً صحيحاً للنوعين."; return; }
+  prices = {91:a, 95:b};
+  try {
+    if (db) await db.doc("settings/prices").set({p91:a, p95:b}); else saveLocal();
+    m.textContent = "تم حفظ الأسعار.";
+  } catch(e){ m.textContent = "تعذّر حفظ الأسعار."; }
+  litersHint();
+});
+
+/* ---------- photo reading ---------- */
+async function readService(kind, file){
+  var st = $("s-read");
+  st.className = "pstat f wide"; st.innerHTML = '<span class="spin"></span>جارٍ قراءة الصورة…';
+  var s = await sampleReady;
+  if (!s || !canImages){ st.className = "pstat bad f wide"; st.textContent = "القراءة التلقائية غير متاحة هنا. أدخل القيم يدوياً."; return; }
+  try {
+    var r = await s.json(prompt(kind), {images:[file], cache:false});
+    if (!r || typeof r !== "object") r = {};
+    var got = [], notes = [];
+    if (typeof r.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && !isNaN(new Date(r.date))){ $("s-when").value = r.date; got.push("التاريخ " + r.date); }
+    var o = num(r.odometer_km);
+    if (o != null && o > 0){ $("s-odo").value = Math.round(o); got.push("العداد " + fmt(o) + " كم"); }
+    if (kind === "inv"){
+      var t = num(r.total_sar);
+      if (t != null && t > 0){ $("s-cost").value = t; got.push("التكلفة " + fmt(t, 2) + " ريال"); }
+      if (typeof r.shop === "string" && r.shop.trim()) notes.push(r.shop.trim());
+      if (typeof r.items === "string" && r.items.trim()) notes.push(r.items.trim());
+    } else {
+      var nx = num(r.next_km);
+      if (nx != null && nx > 0){ notes.push("التغيير القادم عند " + fmt(nx) + " كم"); got.push("القادم عند " + fmt(nx) + " كم"); }
+      if (typeof r.oil === "string" && r.oil.trim()) notes.push(r.oil.trim());
+    }
+    if (notes.length && !$("s-note").value.trim()) $("s-note").value = notes.join(" · ").slice(0, 200);
+    if (got.length){ st.className = "pstat ok f wide"; st.textContent = "تمت القراءة: " + got.join("، ") + ". راجع القيم قبل الحفظ."; }
+    else { st.className = "pstat bad f wide"; st.textContent = "لم تظهر البيانات بوضوح. أدخلها يدوياً."; }
+  } catch(e){ st.className = "pstat bad f wide"; st.textContent = errCopy(e && e.code); }
+}
+$("s-stk").addEventListener("change", function(){ if (this.files && this.files[0]) readService("stk", this.files[0]); });
+$("s-dash").addEventListener("change", function(){ if (this.files && this.files[0]) readService("dash", this.files[0]); });
+/* تحديث قراءة العداد دون تسجيل تعبئة أو صيانة: لمعرفة المتبقي حتى الصيانة القادمة */
+function odoEdit(on){
+  ["odo-now", "odo-cam", "odo-save", "odo-cancel"].forEach(function(id){ $(id).style.display = on ? "" : "none"; });
+  $("odo-now").style.flex = "1"; $("odo-open").style.display = on ? "none" : "";
+  if (on){ $("odo-now").value = ""; $("odo-msg").textContent = ""; $("odo-now").focus(); }
+}
+$("odo-open").addEventListener("click", function(){
+  if (!curCar){ $("odo-msg").textContent = "أضف بيانات السيارة أولاً."; return; }
+  odoEdit(true);
+});
+$("odo-cancel").addEventListener("click", function(){ odoEdit(false); $("odo-msg").textContent = ""; });
+$("odo-file").addEventListener("change", async function(){
+  var file = this.files && this.files[0]; this.value = ""; if (!file) return;
+  var s = await sampleReady;
+  if (!s || !canImages){ $("odo-msg").textContent = "القراءة التلقائية غير متاحة هنا. اكتب العداد يدوياً."; return; }
+  $("odo-msg").textContent = "جارٍ قراءة الصورة…";
+  try {
+    var r = await s.json(prompt("dash"), {images:[file], cache:false}), o = r && num(r.odometer_km);
+    if (o != null && o > 0){ $("odo-now").value = Math.round(o); $("odo-msg").textContent = "قُرئ العداد " + fmt(o) + " كم. راجعه ثم اضغط حفظ."; }
+    else $("odo-msg").textContent = "لم يظهر العداد بوضوح. اكتبه يدوياً.";
+  } catch(e){ $("odo-msg").textContent = "تعذّرت قراءة الصورة. اكتب العداد يدوياً."; }
+});
+$("odo-save").addEventListener("click", async function(){
+  var v = num($("odo-now").value), car = cars.find(function(x){ return x.id === curCar; });
+  if (!car) return;
+  if (!(v > 0)){ $("odo-msg").textContent = "اكتب قراءة العداد بالكيلومتر."; return; }
+  v = Math.round(v);
+  var oErr = odoCheck(car.id, nowLocal(), v, "o", null);
+  if (oErr){ $("odo-msg").textContent = oErr; return; }
+  var log = (car.odoLog || []).concat([{o:v, t:nowLocal()}]).slice(-400);
+  var data = Object.assign({}, car, {odoNow:v, odoAt:nowLocal().slice(0,10), odoLog:log}); delete data.id;
+  var btn = $("odo-save"); btn.disabled = true;
+  try {
+    if (db) await db.doc("cars/" + car.id).set(data);
+    cars = cars.map(function(c){ return c.id === car.id ? Object.assign({id:car.id}, data) : c; });
+    if (!db) saveLocal();
+    odoEdit(false); render();
+    $("odo-msg").textContent = "تم تحديث العداد إلى " + fmt(v) + " كم.";
+  } catch(e){ $("odo-msg").textContent = saveErr(e); } finally { btn.disabled = false; }
+});
+$("s-inv").addEventListener("change", function(){ if (this.files && this.files[0]) readService("inv", this.files[0]); });
+
+function prompt(kind){
+  if (kind === "stk") return "هذه صورة ملصق (ستيكر) تغيير زيت أو صيانة يُلصق على السيارة أو زجاجها. استخرج منه وأعد كائن JSON فقط بدون أي نص آخر:\n" +
+    '{"date": "YYYY-MM-DD"|null, "odometer_km": number|null, "next_km": number|null, "oil": string|null}\n' +
+    "date: تاريخ التغيير بالميلادي (إن كان هجرياً فقط فاجعله null؛ وإن ظهر دون سنة فافترض أقرب تاريخ لا يتجاوز " + nowLocal().slice(0,10) + "). " +
+    "odometer_km: قراءة العداد عند التغيير (الحالي). next_km: قراءة العداد للتغيير القادم. oil: نوع الزيت أو لزوجته إن كُتب.\n" +
+    "اكتب الأرقام بأرقام إنجليزية بدون فواصل. إذا لم تظهر قيمة بوضوح فاجعلها null ولا تخمّن.";
+  if (kind === "inv") return "هذه صورة فاتورة صيانة أو قطع غيار سيارة في السعودية. استخرج منها وأعد كائن JSON فقط بدون أي نص آخر:\n" +
+    '{"date": "YYYY-MM-DD"|null, "total_sar": number|null, "odometer_km": number|null, "shop": string|null, "items": string|null}\n' +
+    "date: تاريخ الفاتورة بالميلادي (إن كان هجرياً فقط فاجعله null). total_sar: الإجمالي النهائي شاملاً الضريبة. " +
+    "odometer_km: قراءة العداد إن كُتبت في الفاتورة. shop: اسم الورشة أو المحل باختصار. items: وصف مختصر جداً للبنود (أقل من 80 حرفاً).\n" +
+    "اكتب الأرقام بأرقام إنجليزية بدون فواصل. إذا لم تظهر قيمة بوضوح فاجعلها null ولا تخمّن.";
+  if (kind === "reg") return "هذه صورة استمارة (رخصة سير) مركبة سعودية. استخرج بيانات المركبة فقط وأعد كائن JSON فقط بدون أي نص آخر:\n" +
+    '{"make": string|null, "model": string|null, "year": number|null, "plate": string|null, "color": string|null, "vin": string|null, "expiry": "YYYY-MM-DD"|null}\n' +
+    "make: ماركة المركبة (الصانع) بالعربية. model: الطراز بالعربية. year: سنة الصنع. plate: رقم اللوحة كما هو مكتوب بالحروف العربية والأرقام مع مسافات، مثل: أ ب ج 1234.\n" +
+    "color: اللون الأساسي. vin: رقم الهيكل بالحروف اللاتينية. expiry: تاريخ انتهاء الاستمارة بالتقويم الميلادي فقط إن كان ظاهراً ميلادياً، وإلا null.\n" +
+    "لا تستخرج اسم المالك ولا رقم هويته. اكتب الأرقام بأرقام إنجليزية. إذا لم تظهر قيمة بوضوح فاجعلها null ولا تخمّن.";
+  if (kind === "dash") return "هذه صورة لطبلون (لوحة عدادات) سيارة. استخرج منها الأرقام التالية وأعد كائن JSON فقط بدون أي نص آخر:\n" +
+    '{"odometer_km": number|null, "range_km": number|null, "avg_value": number|null, "avg_unit": "km/l"|"l/100km"|null}\n' +
+    "odometer_km: قراءة عداد المسافة الكلي (ODO) بالكيلومتر، وهو الرقم الإجمالي الكبير وليس عداد الرحلة Trip A/B.\n" +
+    "range_km: المسافة المتبقية حتى ينتهي الوقود (Range / DTE / المدى) بالكيلومتر.\n" +
+    "avg_value و avg_unit: متوسط استهلاك الوقود المعروض إن وُجد مع وحدته (km/L أو L/100km).\n" +
+    "اكتب الأرقام بأرقام إنجليزية بدون فواصل. إذا لم يظهر رقم بوضوح فاجعله null ولا تخمّن.\nمثال: {\"odometer_km\": 84210, \"range_km\": 430, \"avg_value\": 11.2, \"avg_unit\": \"km/l\"}";
+  return "هذه صورة لإشعار خصم بنكي أو رسالة بنك أو إيصال دفع من محطة وقود في السعودية. استخرج منها وأعد كائن JSON فقط بدون أي نص آخر:\n" +
+    '{"amount_sar": number|null, "datetime": "YYYY-MM-DDTHH:mm"|null}\n' +
+    "amount_sar: مبلغ العملية المخصوم بالريال (ليس الرصيد المتبقي).\n" +
+    "datetime: تاريخ ووقت العملية بالتقويم الميلادي وبتوقيت 24 ساعة. إن كان التاريخ هجرياً ولا يظهر الميلادي فاجعله null. إن ظهر التاريخ دون سنة فافترض أقرب تاريخ لا يتجاوز " + nowLocal() + ".\n" +
+    "اكتب الأرقام بأرقام إنجليزية. إذا لم تظهر قيمة بوضوح فاجعلها null ولا تخمّن.\nمثال: {\"amount_sar\": 100.00, \"datetime\": \"2026-11-14T08:35\"}";
+}
+function errCopy(code){
+  if (code === "no_key") return "أضف مفتاح Claude API من الإعدادات أسفل الصفحة لتفعيل قراءة الصور، أو أدخل القيم يدوياً.";
+  if (code === "bad_key") return "مفتاح Claude API غير صحيح أو منتهٍ. راجعه من الإعدادات أسفل الصفحة.";
+  if (code === "not_granted" || code === "sampling_disabled" || code === "images_unavailable" || code === "not_declared" || code === "capability_disabled" || code === "capability_removed")
+    return "القراءة التلقائية غير متاحة. أدخل القيم يدوياً.";
+  if (code === "rate_limited") return "تم بلوغ حد الاستخدام. حاول لاحقاً أو أدخل القيم يدوياً.";
+  if (code === "image_rejected") return "لم تُقبل الصورة. جرّب صورة أخرى بصيغة JPG أو PNG.";
+  if (code === "session_expired") return "انتهت الجلسة. سجّل الدخول من جديد.";
+  if (code === "invalid_json" || code === "refused" || code === "empty_completion") return "لم أتمكن من قراءة الصورة. جرّب صورة أوضح أو أدخل القيم يدوياً.";
+  return "تعذّرت القراءة. اختر الصورة مرة أخرى أو أدخل القيم يدوياً.";
+}
+async function readPhoto(kind, file){
+  var st = $(kind + "-status");
+  st.className = "pstat"; st.innerHTML = '<span class="spin"></span>جارٍ قراءة الصورة…';
+  var s = await sampleReady;
+  if (!s || !canImages){ st.className = "pstat bad"; st.textContent = "القراءة التلقائية غير متاحة هنا. أدخل القيم يدوياً."; return; }
+  try {
+    var r = await s.json(prompt(kind), {images:[file], cache:false});
+    if (!r || typeof r !== "object") r = {};
+    var got = [];
+    if (kind === "dash"){
+      var o = num(r.odometer_km), g = num(r.range_km), a = num(r.avg_value);
+      if (o != null && o >= 0){ $("odo").value = Math.round(o); got.push("العداد " + fmt(o) + " كم"); }
+      if (g != null && g >= 0){ $("range").value = Math.round(g); got.push("المتبقي " + fmt(g) + " كم"); }
+      if (a != null && a > 0){ $("avg").value = a; if (r.avg_unit === "l/100km" || r.avg_unit === "km/l") $("avg-unit").value = r.avg_unit; got.push("المتوسط " + a); }
+    } else if (kind === "reg"){
+      [["make","v-make"],["model","v-model"],["plate","v-plate"],["color","v-color"],["vin","v-vin"]].forEach(function(p){
+        var v = r[p[0]];
+        if (typeof v === "string" && v.trim()){ $(p[1]).value = v.trim().slice(0, 60); got.push(v.trim().slice(0, 60)); }
+      });
+      var y = num(r.year);
+      if (y >= 1950 && y <= 2100){ $("v-year").value = y; got.push(String(y)); }
+      if (typeof r.expiry === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.expiry)) $("v-exp").value = r.expiry;
+    } else {
+      var m = num(r.amount_sar);
+      if (m != null && m > 0){ $("amount").value = m; got.push("المبلغ " + fmt(m, 2) + " ريال"); }
+      if (typeof r.datetime === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(r.datetime) && !isNaN(new Date(r.datetime.slice(0,16)))){
+        $("when").value = r.datetime.slice(0,16); got.push("الوقت " + r.datetime.slice(11,16));
+      }
+      litersHint();
+    }
+    if (got.length){ st.className = "pstat ok"; st.textContent = "تمت القراءة: " + got.join("، "); }
+    else { st.className = "pstat bad"; st.textContent = "لم تظهر الأرقام بوضوح. أدخلها يدوياً."; }
+  } catch(e){
+    st.className = "pstat bad"; st.textContent = errCopy(e && e.code);
+  }
+}
+["dash","bank","reg"].forEach(function(kind){
+  $(kind + "-file").addEventListener("change", function(){
+    var file = this.files && this.files[0]; if (!file) return;
+    var img = $(kind + "-img");
+    try { img.src = URL.createObjectURL(file); img.hidden = false; $(kind + "-cap").hidden = true; } catch(e){}
+    if (kind === "bank") payMethod = "card";
+    readPhoto(kind, file);
+  });
+});
+
+/* ---------- start ---------- */
+function useLocal(){
+  try { var o = JSON.parse(localStorage.getItem(LS) || "{}"); fills = o.fills || []; if (o.prices) prices = o.prices; services = o.services || []; itemCfg = o.itemCfg || {}; cars = o.cars || []; } catch(e){}
+  loaded = true; carsLoaded = true; svcLoaded = true; setStatus("الحفظ على هذا الجهاز فقط", true); showPrices(); render();
+}
+function start(){
+  resetForm(); showPrices(); render();
+  var c = window.claude;
+  if (!c || !c.use){ useLocal(); $("ai-hint").textContent = "القراءة التلقائية للصور تعمل عند فتح الصفحة داخل Claude. يمكنك الإدخال يدوياً."; return; }
+  sampleReady = c.use("sample").then(async function(s){
+    if (!s) return null;
+    var lim = await s.limits().catch(function(){ return null; });
+    canImages = !!(lim && lim.images);
+    return s;
+  }).catch(function(){ return null; });
+  sampleReady.then(function(s){ if (!s || !canImages) $("ai-hint").textContent = "القراءة التلقائية للصور غير متاحة في هذا العرض. أدخل القيم يدوياً."; });
+
+  c.use("assets").then(function(a){ assets = a || null; }).catch(function(){});
+  c.use("db").then(function(d){
+    if (!d){ useLocal(); return; }
+    db = d;
+    setStatus("جارٍ التحميل…");
+    var timer = setTimeout(function(){ setStatus("تعذّر الوصول للسجل حالياً، وقد تكون البيانات غير محدّثة", true); }, 10000);
+    db.collection("fills").onSnapshot(function(snap){
+      fills = snap.docs.map(function(x){
+        var v = x.data() || {};
+        return {id:x.id, ts:String(v.ts || ""), amount:Number(v.amount) || 0, odo:v.odo == null ? null : Number(v.odo),
+                range:v.range == null ? null : Number(v.range), avg:v.avg == null ? null : Number(v.avg), avgUnit:v.avgUnit || null,
+                type:Number(v.type) === 95 ? 95 : Number(v.type) === 91 || v.type == null ? 91 : String(v.type),
+                price:Number(v.price) || DEF[Number(v.type)] || (v.type == null ? DEF[91] : null), pay:v.pay === "cash" ? "cash" : "card", carId:v.carId ? String(v.carId) : null};
+      });
+      loaded = true;
+      if (!snap.metadata.fromCache){ clearTimeout(timer); setStatus(window.__savedLabel || "محفوظ في حسابك"); }
+      render();
+    }, function(){ clearTimeout(timer); loaded = true; setStatus("تعذّر تحميل السجل", true); render(); });
+    db.collection("services").onSnapshot(function(snap){
+      services = snap.docs.map(function(x){
+        var v = x.data() || {};
+        return {id:x.id, itemId:String(v.itemId || ""), ts:String(v.ts || ""), odo:v.odo == null ? null : Number(v.odo),
+                cost:v.cost == null ? null : Number(v.cost), note:String(v.note || ""),
+                warranty:Number(v.warranty) > 0 ? Number(v.warranty) : null, invoice:v.invoice ? String(v.invoice) : null,
+                carId:v.carId ? String(v.carId) : null};
+      });
+      svcLoaded = true; render();
+    }, function(){ svcLoaded = true; render(); });
+    db.collection("cars").onSnapshot(function(snap){
+      cars = snap.docs.map(function(x){
+        var v = x.data() || {};
+        return {id:x.id, make:String(v.make || ""), model:String(v.model || ""), year:Number(v.year) || null, plate:String(v.plate || ""),
+                color:String(v.color || ""), vin:String(v.vin || ""), expiry:v.expiry ? String(v.expiry) : null, created:Number(v.created) || 0,
+                odoNow:Number(v.odoNow) > 0 ? Number(v.odoNow) : null, odoAt:v.odoAt ? String(v.odoAt) : null,
+                odoLog:Array.isArray(v.odoLog) ? v.odoLog.filter(function(p){ return p && Number(p.o) > 0 && p.t; }).map(function(p){ return {o:Number(p.o), t:String(p.t)}; }) : []};
+      }).sort(function(a, b){ return a.created - b.created; });
+      carsLoaded = true; render();
+    }, function(){ carsLoaded = true; render(); });
+    db.collection("items").onSnapshot(function(snap){
+      var cfg = {};
+      snap.docs.forEach(function(x){
+        var v = x.data() || {};
+        cfg[x.id] = {name:String(v.name || ""), km:Number(v.km) || 0, months:Number(v.months) || 0, hidden:!!v.hidden};
+      });
+      itemCfg = cfg; render();
+    }, function(){});
+    db.doc("settings/prices").onSnapshot(function(s){
+      if (!s.exists) return;
+      var v = s.data() || {};
+      prices = {91:Number(v.p91) > 0 ? Number(v.p91) : DEF[91], 95:Number(v.p95) > 0 ? Number(v.p95) : DEF[95]};
+      showPrices(); render();
+    }, function(){});
+  }).catch(useLocal);
+}
+start();
+})();
+</script>
+</body>
+</html>

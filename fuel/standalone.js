@@ -7,7 +7,11 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "71";
+var VERSION = "72";
+/* وضع التطبيق: fuel = دفتر البنزين (السيارة فقط)، budget = دفتر المصروف (مصروف البيت). يحدّده البناء. */
+var APP_MODE = "fuel";
+/* خادم النسخ الاحتياطي واحد للتطبيقين حتى تبقى البيانات نفسها */
+var SYNC_URL = APP_MODE === "budget" ? "../fuel/sync.php" : "sync.php";
 (function(){
   var h = document.querySelector("h1");
   if (!h) return;
@@ -764,7 +768,7 @@ function sha256hex(s){
   });
 }
 function syncCall(key, body){
-  return fetch("sync.php?a=sync", {method:"POST", cache:"no-store", headers:{"Content-Type":"application/json", "X-Sync-Key":key}, body:JSON.stringify(body)});
+  return fetch(SYNC_URL + "?a=sync", {method:"POST", cache:"no-store", headers:{"Content-Type":"application/json", "X-Sync-Key":key}, body:JSON.stringify(body)});
 }
 function stampChanges(before){
   var now = Date.now();
@@ -799,9 +803,9 @@ async function syncBlobs(key, remote){
   for (var id in need){
     if (!/^[a-z0-9]{8,64}$/.test(id)) continue;
     if (local[id] && remote.indexOf(id) < 0){
-      await fetch("sync.php?a=blobput&id=" + id, {method:"POST", cache:"no-store", headers:h, body:await blobToB64(local[id])});
+      await fetch(SYNC_URL + "?a=blobput&id=" + id, {method:"POST", cache:"no-store", headers:h, body:await blobToB64(local[id])});
     } else if (!local[id] && remote.indexOf(id) >= 0){
-      var r = await fetch("sync.php?a=blobget&id=" + id, {method:"POST", cache:"no-store", headers:h});
+      var r = await fetch(SYNC_URL + "?a=blobget&id=" + id, {method:"POST", cache:"no-store", headers:h});
       if (r.ok){
         var b = await b64ToBlob((await r.json()).data);
         await tx("readwrite", (function(blob, k){ return function(s){ return s.put(blob, k); }; })(b, id));
@@ -952,8 +956,8 @@ msPush();
    لا يعمل عندما يكون هذا البرنامج نفسه معروضاً داخل صفحة أخرى، حتى لا يتداخل القسمان */
 (function(){
   if (window.self !== window.top) return;
-  try { document.title = "دفتر المصروف"; } catch(e){}
-  try { var h1 = document.querySelector("h1"); if (h1 && h1.firstChild && h1.firstChild.nodeType === 3) h1.firstChild.nodeValue = "مصروفات السيارة"; } catch(e){}
+  try { document.title = APP_MODE === "budget" ? "دفتر المصروف" : "دفتر البنزين"; } catch(e){}
+  try { var h1 = document.querySelector("h1"); if (APP_MODE === "budget" && h1 && h1.firstChild && h1.firstChild.nodeType === 3) h1.firstChild.nodeValue = "مصروفات السيارة"; } catch(e){}
   var css = document.createElement("style");
   css.textContent = "#app-tabs{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}" +
     "#app-tabs button{border:0;background:transparent;min-height:56px;font:inherit;font-weight:600;font-size:.95rem;color:var(--muted);cursor:pointer}" +
@@ -1352,7 +1356,7 @@ msPush();
   /* تُحدَّث الأرقام عند كل عودة إلى الصفحة الرئيسية، وقسم المنزل يُحمَّل في الخلفية ليحسب مصروف الشهر والباقي */
   document.addEventListener("DOMContentLoaded", function(){
     stats();
-    setTimeout(function(){ if (!frame.getAttribute("src")) frame.setAttribute("src", "../masroof/"); }, 600);
+    if (APP_MODE === "budget") setTimeout(function(){ if (!frame.getAttribute("src")) frame.setAttribute("src", "../masroof/"); }, 600);
   });
   window.__shell = {/* ثلاثة تنبيهات في اليوم: 7:00 صباحاً، 4:30 عصراً، 9:00 مساءً. كل تنبيه يبقى حتى تُسجَّل قراءة بعد وقته */
     odoDue:function(){ var n = new Date(), t = n.getHours() * 60 + n.getMinutes(), ms = det.odoMins || []; if (!det.hasCar) return false;
@@ -1364,6 +1368,7 @@ msPush();
    الرئيسية برقم واحد «المتاح اليوم»، زر إضافة واحد، المشتريات، السجل، المزيد.
    المحرّكان القديمان (قسم السيارة وصفحة المنزل) يبقيان كما هما ويُفتحان من «المزيد» أو عند تسجيل مصروف. */
 (function(){
+  if (APP_MODE !== "budget") return;
   var S = window.__shell; if (!S) return;
   var frame = S.frame, cur = "home", logF = "all";
   function $(id){ return document.getElementById(id); }
@@ -1445,8 +1450,7 @@ msPush();
     '<button type="button" data-go="log">' + ico(I.list) + '<span>السجل</span></button><button type="button" data-go="more">' + ico(I.more) + '<span>المزيد</span></button>';
   var add = document.createElement("dialog"); add.id = "v2-add"; add.setAttribute("aria-labelledby", "v2-add-h");
   function opt(k, ic, t, s){ return '<button type="button" class="o" data-add="' + k + '"><span class="sq">' + ico(I[ic], 24) + '</span><span class="t"><b>' + t + '</b><small>' + s + '</small></span>' + ico(I.chev, 18) + '</button>'; }
-  add.innerHTML = '<h2 id="v2-add-h">إضافة مصروف</h2><p>اختر نوع المصروف</p><div class="os">' + opt("fuel", "fuel", "بنزين", "العداد ثم مبلغ التعبئة") + opt("svc", "tool", "صيانة السيارة", "العداد ثم نوع الصيانة") +
-    opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + opt("inv", "coin", "فاتورة مجزّأة", "إجمالي واحد يُقسَّم على عدة بنود وفروع") + opt("odo", "gauge", "تحديث العداد", "قراءة العداد فقط، بلا مصروف") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
+  add.innerHTML = '<h2 id="v2-add-h">إضافة مصروف</h2><p>اختر نوع المصروف</p><div class="os">' + opt("shop", "bag", "مشتريات البيت", "طعام ومستلزمات بالكمية") + opt("other", "coin", "مصروف آخر", "إيجار، فواتير، مدارس، غيرها") + opt("inv", "coin", "فاتورة مجزّأة", "إجمالي واحد يُقسَّم على عدة بنود وفروع") + '</div><button type="button" class="x" id="v2-add-x">إلغاء</button>';
   var rd = document.createElement("dialog"); rd.id = "v2-row"; rd.setAttribute("aria-labelledby", "v2-row-h");
   rd.innerHTML = '<h2 id="v2-row-h"></h2><div id="v2-row-b"></div><div class="acts"><button type="button" class="pr" id="v2-row-edit">تعديل</button><button type="button" class="dl" id="v2-row-del">حذف</button><button type="button" class="x" id="v2-row-x">إغلاق</button></div>';
   document.body.appendChild(v2); document.body.appendChild(nav); document.body.appendChild(add); document.body.appendChild(rd);
@@ -1479,7 +1483,7 @@ msPush();
   function rHome(){
     var s = sum(), h = '<div><h1>دفتر المصروف</h1><p class="sub">' + esc(dayName(todayS()) === "اليوم" ? new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {weekday:"long", day:"numeric", month:"long"}).format(new Date()) : "") + '</p></div>';
     /* تنبيه يومي أعلى الصفحة: من 4:30 عصراً حتى تُسجَّل قراءة العداد */
-    var due = false; try { due = S.odoDue(); } catch(e){}
+    var due = false; /* تنبيه العداد انتقل إلى دفتر البنزين */
     if (due) h += '<button type="button" class="al w" data-odo="1">' + ico(I.gauge) + '<span>يلزم تسجيل ممشى اليوم ليُحسب كم يكفي البنزين</span>' + ico(I.chev, 18) + '</button>';
     if (!s){ return h + '<div class="card"><span class="sub">المتاح اليوم</span><div class="big"><b>—</b><span>ريال</span></div><p class="sub">جارٍ تحميل البيانات…</p></div>'; }
     var L = Number(s.dayLimit) || 0, sp = Number(s.daySpent) || 0, left = L - sp, pc = L > 0 ? Math.min(100, sp / L * 100) : (sp > 0 ? 100 : 0), over = left < -0.005;
@@ -1504,7 +1508,7 @@ msPush();
     /* سطر البنزين يبقى في مكانه؛ تنبيه تسجيل الممشى صار أعلى الصفحة */
     /* إحصائية البنزين: مصروف الشهر، ممشى الشهر، الممشى منذ آخر تعبئة (من إحصاءات قسم السيارة) */
     var hv = function(id){ var e = document.getElementById(id); return e ? String(e.textContent || "").trim() : ""; }, fv = hv("hs-fuel"), kv = hv("hs-km"), sv = hv("hs-since");
-    if ((fv && fv !== "—") || (kv && kv !== "—") || (sv && sv !== "—") || fuel) h += '<div class="card"><div class="hd"><b>البنزين</b><span class="sub">تقديري</span></div>' +
+    if (false) if ((fv && fv !== "—") || (kv && kv !== "—") || (sv && sv !== "—") || fuel) h += '<div class="card"><div class="hd"><b>البنزين</b><span class="sub">تقديري</span></div>' +
       /* موعد التعبئة القادمة تقديرياً: بالأيام وبالتاريخ (آخر يوم يكفيه البنزين الحالي) */
       (fuel && fuel.end ? '<button type="button" class="nx' + (fuel.left > 0 ? "" : " w") + '" data-det="since"><span><small>' + (fuel.left > 0 ? "التعبئة القادمة تقريباً" : "حان وقت التعبئة · انتهت المدة المقدّرة") + '</small><b>' + esc(nxDate(fuel.end)) + '</b></span><span class="dd"><b>' + (fuel.left > 0 ? fuel.left : 0) + '</b><small>' + (fuel.left === 1 ? "يوم باقٍ" : fuel.left === 2 ? "يومان باقيان" : fuel.left > 2 && fuel.left <= 10 ? "أيام باقية" : fuel.left > 10 ? "يوماً باقياً" : "يوم باقٍ") + '</small></span></button>' : '') + '<div class="f3">' +
       '<button type="button" class="tl" data-det="fuel"><b>' + esc(fv || "—") + '</b><small>مصروف الشهر (ريال)</small></button>' +
@@ -1539,7 +1543,7 @@ msPush();
   function rMore(){
     var s = sum();
     function m(k, ic, t, sub){ return '<button type="button" class="row" data-more="' + k + '"><span class="sq">' + ico(I[ic], 20) + '</span><span class="t"><b>' + t + '</b><small>' + sub + '</small></span><span class="mu">' + ico(I.chev, 18) + '</span></button>'; }
-    return '<div><h1>المزيد</h1></div><div class="card g0">' + m("car", "car", "السيارة", "العداد، الممشى، الاستهلاك، الصيانة") + m("exp", "sliders", "البنود والحدود", "الدخل وحدود البنود والتسويات") + m("stmt", "sliders", "كشف البنود", "أول المدة، المضاف، المصروف، رصيد آخر المدة") + '</div>' +
+    return '<div><h1>المزيد</h1></div><div class="card g0">' + m("car", "car", "دفتر البنزين", "تطبيق السيارة المستقل: التعبئة والصيانة والإحصائيات") + m("exp", "sliders", "البنود والحدود", "الدخل وحدود البنود والتسويات") + m("stmt", "sliders", "كشف البنود", "أول المدة، المضاف، المصروف، رصيد آخر المدة") + '</div>' +
       '<div class="card g0">' + m("sync", "cloud", "النسخ الاحتياطي", lsGet(SYNCKEY) ? "مفعّل: بياناتك تُحفظ على الخادم" : "غير مفعّل: البيانات على هذا الجهاز فقط") + '</div>' +
       '<p class="note">دفتر المصروف · النسخة ' + esc(VERSION) + (s && s.ver ? " · المنزل " + esc(s.ver) : "") + '</p>';
   }
@@ -1586,7 +1590,8 @@ msPush();
   }
   function mark(k){ Array.prototype.forEach.call(nav.querySelectorAll("button[data-go]"), function(b){ b.setAttribute("aria-current", b.dataset.go === k ? "page" : "false"); }); }
   function go(k){
-    if (k === "car" || k === "exp"){ S.show(k); return; }
+    if (k === "car"){ location.href = "../fuel/"; return; }
+    if (k === "exp"){ S.show(k); return; }
     cur = k; v2.hidden = false; mark(k); try { S.stats(); } catch(e){} draw(); v2.scrollTop = 0;
   }
   window.__shellHook = function(v){ if (v === "car" || v === "exp"){ v2.hidden = true; mark("more"); } };
@@ -1623,6 +1628,299 @@ msPush();
   go("home");
 })();
 
+
+/* ===== دفتر البنزين (النسخة 72): تطبيق للسيارة فقط =====
+   الرئيسية، السجل، الصيانة، الإحصائيات، وزر الإضافة. كل الأرقام تُحسب من سجلات السيارة المحفوظة (store) دون تغييرها.
+   التسجيل والتعديل والإعدادات يبقى في صفحة السيارة الأصلية وتُفتح من هنا. */
+(function(){
+  if (typeof APP_MODE !== "undefined" && APP_MODE !== "fuel") return;
+  var S = window.__shell; if (!S) return;
+  try { document.title = "دفتر البنزين"; } catch(e){}
+  var cur = "home", logF = "all", statP = 6;
+  function $(id){ return document.getElementById(id); }
+  function esc(x){ return String(x).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function n0(x){ return Number(x).toLocaleString("en-US", {maximumFractionDigits:0}); }
+  function n1(x){ return Number(x).toLocaleString("en-US", {minimumFractionDigits:1, maximumFractionDigits:1}); }
+  function n2(x){ return Number(x).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function pad(n){ return String(n).padStart(2, "0"); }
+  function dS(d){ return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function todayS(){ return dS(new Date()); }
+  function days(n){ return n === 1 ? "يوم واحد" : n === 2 ? "يومان" : n + (n > 10 ? " يوماً" : " أيام"); }
+  function fmtD(d, o){ try { return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", o).format(new Date(String(d).slice(0,10) + "T12:00")); } catch(e){ return String(d).slice(0,10); } }
+  function dLong(d){ return fmtD(d, {weekday:"long", day:"numeric", month:"long"}); }
+  function dShort(d){ return fmtD(d, {day:"numeric", month:"long"}); }
+  function mName(ym){ return fmtD(ym + "-01", {month:"long", year:"numeric"}); }
+  function mShort(ym){ return fmtD(ym + "-01", {month:"long"}); }
+  function ico(p, s){ return '<svg aria-hidden="true" width="' + (s || 22) + '" height="' + (s || 22) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
+  var I = {home:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>', list:'<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', plus:'<path d="M12 5v14M5 12h14"/>',
+    fuel:'<path d="M5 20V5a1 1 0 011-1h7a1 1 0 011 1v15"/><path d="M4 20h11"/><path d="M14 9h2.5a1.5 1.5 0 011.5 1.5V16a1.5 1.5 0 003 0V8l-2.5-2.5"/><path d="M7.5 8h4"/>',
+    tool:'<path d="M14.5 6.5a4 4 0 00-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 005.3-5.3L15 12l-3-3z"/>', chart:'<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>', chev:'<path d="M14 6l-6 6 6 6"/>',
+    gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+    gauge:'<path d="M4 15a8 8 0 0116 0"/><path d="M12 15l4-4"/><path d="M4 19h16"/>'};
+
+  /* ---------- القراءة من السجلات ---------- */
+  var DEF = [["oil","زيت المحرك",10000,6],["oil-filter","فلتر الزيت",10000,6],["air-filter","فلتر الهواء",20000,12],["cabin-filter","فلتر المكيف",20000,12],["brake-pads","فحمات الفرامل",40000,0],["tires","الإطارات",50000,48],["battery","البطارية",0,24],["gear-oil","زيت القير",60000,0],["coolant","سائل التبريد",40000,24],["spark","البواجي",40000,0],["wipers","مساحات الزجاج",0,12]];
+  function docs(pre){ var out = []; Object.keys(store).forEach(function(k){ var v = store[k]; if (k.indexOf(pre) === 0 && v && typeof v === "object") out.push(Object.assign({id:k.slice(pre.length)}, v)); }); return out; }
+  function num(x){ var n = Number(x); return isFinite(n) ? n : null; }
+  function model(){
+    var cars = docs("cars/"), ids = cars.map(function(c){ return c.id; }).sort(), cid = lsGet("fuel-cur-car"); if (ids.indexOf(cid) < 0) cid = ids[0] || null;
+    var car = cid ? store["cars/" + cid] : null, M = {car:car, cid:cid, many:ids.length > 1, name:car ? ([car.make, car.model].filter(Boolean).join(" ") || "السيارة") : ""};
+    var mine = function(x){ return !cid || x.carId === cid; };
+    M.fills = docs("fills/").filter(mine).sort(function(a, b){ return String(a.ts) < String(b.ts) ? -1 : 1; });
+    M.svcs = docs("services/").filter(mine).sort(function(a, b){ return String(a.ts) < String(b.ts) ? -1 : 1; });
+    M.fills.forEach(function(f){ var p = num(f.price), a = num(f.amount); f.L = p > 0 && a > 0 ? a / p : null; });
+    /* قراءات العداد: من التعبئات والصيانة وسجل العداد، قراءة واحدة لكل يوم وبترتيب تصاعدي */
+    var raw = [];
+    M.fills.concat(M.svcs).forEach(function(x){ if (num(x.odo) != null) raw.push({d:String(x.ts).slice(0,10), o:Number(x.odo)}); });
+    if (car){ (car.odoLog || []).forEach(function(q){ if (num(q.o) != null) raw.push({d:String(q.t).slice(0,10), o:Number(q.o)}); }); if (num(car.odoNow) != null && car.odoAt) raw.push({d:String(car.odoAt).slice(0,10), o:Number(car.odoNow)}); }
+    var byDay = {}; raw.forEach(function(q){ if (/^\d{4}-\d\d-\d\d$/.test(q.d) && (byDay[q.d] == null || q.o > byDay[q.d])) byDay[q.d] = q.o; });
+    var pts = []; Object.keys(byDay).sort().forEach(function(d){ if (!pts.length || byDay[d] >= pts[pts.length - 1].o) pts.push({d:d, o:byDay[d], t:new Date(d + "T12:00").getTime()}); });
+    M.pts = pts; M.top = pts.length ? pts[pts.length - 1].o : null; M.topDay = pts.length ? pts[pts.length - 1].d : null;
+    M.odoAt = function(t){ if (!pts.length) return null; if (t <= pts[0].t) return pts[0].o; for (var i = 1; i < pts.length; i++){ if (t <= pts[i].t){ var A = pts[i - 1], B = pts[i]; return A.o + (B.o - A.o) * (t - A.t) / (B.t - A.t); } } return pts[pts.length - 1].o; };
+    /* الممشى اليومي: متوسط آخر 14 يوماً مما سُجّل من قراءات */
+    var now = Date.now(); M.daily = null;
+    if (pts.length > 1){ var t0 = Math.max(pts[0].t, now - 14 * 864e5), span = (pts[pts.length - 1].t - t0) / 864e5; if (span >= 1) M.daily = Math.max(0, (M.top - M.odoAt(t0)) / span); }
+    /* الاستهلاك: لترات كل تعبئة تُحسب على المسافة حتى التعبئة التي بعدها */
+    var fo = M.fills.filter(function(f){ return num(f.odo) != null; }); M.iv = [];
+    for (var i = 1; i < fo.length; i++){ var dist = Number(fo[i].odo) - Number(fo[i - 1].odo), L = fo[i - 1].L; if (dist > 0) M.iv.push({d:String(fo[i].ts).slice(0,10), dist:dist, L:L, kml:L > 0 ? dist / L : null, id:fo[i].id}); }
+    var okIv = M.iv.filter(function(x){ return x.kml > 0; }), sd = 0, sl = 0; okIv.forEach(function(x){ sd += x.dist; sl += x.L; });
+    M.kmlAll = sl > 0 ? sd / sl : null; M.kmlLast = okIv.length ? okIv[okIv.length - 1].kml : null; M.kmlSrc = "calc";
+    M.lastF = fo.length ? fo[fo.length - 1] : (M.fills.length ? M.fills[M.fills.length - 1] : null);
+    /* إن لم تكفِ التعبئات للحساب تُستعمل قراءة شاشة السيارة المسجَّلة مع آخر تعبئة (لتر/100 كم) */
+    if (!M.kmlAll){ var withAvg = M.fills.filter(function(f){ return num(f.avg) > 0; }); if (withAvg.length){ var a = withAvg[withAvg.length - 1]; M.kmlAll = String(a.avgUnit || "").indexOf("km/l") === 0 ? Number(a.avg) : 100 / Number(a.avg); M.kmlSrc = "dash"; } }
+    M.kml = M.kmlLast || M.kmlAll;
+    M.price = M.lastF && num(M.lastF.price) > 0 ? Number(M.lastF.price) : null;
+    M.perKm = M.price && M.kmlAll ? M.price / M.kmlAll : null;
+    /* التعبئة القادمة: مدى آخر تعبئة (قراءة السيارة إن سُجّلت، وإلا اللترات × الاستهلاك) ناقص ما مُشي بعدها */
+    M.next = null;
+    if (M.lastF && num(M.lastF.odo) != null && M.top != null){
+      var range = num(M.lastF.range) > 0 ? Number(M.lastF.range) : (M.lastF.L > 0 && M.kmlAll ? M.lastF.L * M.kmlAll : null), since = Math.max(0, M.top - Number(M.lastF.odo));
+      if (range){ var rem = Math.max(0, range - since), dl = M.daily > 0 ? rem / M.daily : null, dt = null;
+        if (dl != null){ var x = new Date(); x.setDate(x.getDate() + Math.floor(dl)); dt = dS(x); }
+        M.next = {range:range, since:since, rem:rem, pct:Math.max(0, Math.min(100, rem / range * 100)), days:dl != null ? Math.floor(dl) : null, date:dt, fromDash:num(M.lastF.range) > 0}; }
+      else M.next = {since:since};
+    }
+    /* مصروف وممشى كل شهر */
+    M.month = function(ym){ var f = 0, s = 0, L = 0, nf = 0; M.fills.forEach(function(x){ if (String(x.ts).slice(0,7) === ym){ f += num(x.amount) || 0; L += x.L || 0; nf++; } }); M.svcs.forEach(function(x){ if (String(x.ts).slice(0,7) === ym) s += num(x.cost) || 0; });
+      var a = new Date(Number(ym.slice(0,4)), Number(ym.slice(5,7)) - 1, 1, 12).getTime(), b = Math.min(Date.now(), new Date(Number(ym.slice(0,4)), Number(ym.slice(5,7)), 1, 12).getTime()), km = null, partial = false;
+      if (pts.length && pts[pts.length - 1].t >= a && pts[0].t <= b){ var ta = Math.max(a, pts[0].t); km = Math.max(0, M.odoAt(b) - M.odoAt(ta)); partial = pts[0].t > a; }
+      return {fuel:f, svc:s, total:f + s, L:L, n:nf, km:km, partial:partial, from:partial ? pts[0].d : null}; };
+    /* الصيانة: كل بند وما بقي له بالكيلومتر والتاريخ */
+    var cfg = {}; docs("items/").forEach(function(x){ cfg[x.id] = x; });
+    var list = DEF.map(function(d){ var c = cfg[d[0]] || {}; return {id:d[0], name:c.name || d[1], km:c.km != null ? Number(c.km) : d[2], months:c.months != null ? Number(c.months) : d[3], hidden:!!c.hidden}; });
+    Object.keys(cfg).forEach(function(id){ if (!DEF.some(function(d){ return d[0] === id; })) list.push({id:id, name:cfg[id].name || "بند", km:Number(cfg[id].km) || 0, months:Number(cfg[id].months) || 0, hidden:!!cfg[id].hidden}); });
+    M.items = list.filter(function(it){ return !it.hidden; }).map(function(it){
+      var last = null; M.svcs.forEach(function(s){ if (s.itemId === it.id) last = s; });
+      var o = {id:it.id, name:it.name, km:it.km, months:it.months, last:last, remKm:null, remDays:null, dueDate:null, estDate:null, pct:null, st:"none"};
+      if (!last) return o;
+      if (it.km > 0 && num(last.odo) != null && M.top != null) o.remKm = Number(last.odo) + it.km - M.top;
+      if (it.months > 0){ var dd = new Date(String(last.ts).slice(0,10) + "T12:00"); dd.setMonth(dd.getMonth() + it.months); o.dueDate = dS(dd); o.remDays = Math.round((dd.getTime() - new Date(todayS() + "T12:00").getTime()) / 864e5); }
+      var eKm = o.remKm != null && M.daily > 0 ? o.remKm / M.daily : null, e = eKm != null && o.remDays != null ? Math.min(eKm, o.remDays) : eKm != null ? eKm : o.remDays;
+      if (e != null){ var z = new Date(); z.setDate(z.getDate() + Math.round(e)); o.estDate = dS(z); o.estDays = Math.round(e); }
+      var pk = o.remKm != null ? 1 - o.remKm / it.km : null, pm = o.remDays != null ? 1 - o.remDays / (it.months * 30.4) : null; o.pct = Math.max(0, Math.min(100, Math.max(pk == null ? 0 : pk, pm == null ? 0 : pm) * 100));
+      o.st = (o.remKm != null && o.remKm <= 0) || (o.remDays != null && o.remDays <= 0) ? "due" : (o.remKm != null && o.remKm <= Math.max(500, it.km * 0.1)) || (o.remDays != null && o.remDays <= 30) ? "near" : "ok";
+      return o; });
+    return M;
+  }
+
+  /* ---------- الواجهة ---------- */
+  try { var fl = document.createElement("link"); fl.rel = "stylesheet"; fl.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"; document.head.appendChild(fl); } catch(e){}
+  var css = document.createElement("style");
+  css.textContent = "#app-home,#app-tabs{display:none!important}body{padding-bottom:calc(86px + env(safe-area-inset-bottom))}" +
+    "#v3,#v3-nav,#v3-add,#v3-det{--i:#14213D;--m:#5B6577;--b:#F3F5F8;--s:#fff;--l:#DDE2EA;--a:#0B6E63;--ab:#E3F2EF;--a2:#B9D8D3;--w:#B4470B;--wb:#FBEDE2;--g:#1E7A46;--gb:#E4F3EA;font-family:'IBM Plex Sans Arabic',system-ui,-apple-system,sans-serif}" +
+    "@media (prefers-color-scheme:dark){#v3,#v3-nav,#v3-add,#v3-det{--i:#EEF1F6;--m:#A3ACBB;--b:#12141A;--s:#1B1F27;--l:#2C323D;--a:#7CC4B8;--ab:#16332F;--a2:#2F5952;--w:#E0A46E;--wb:#3A2A1C;--g:#7CC79A;--gb:#17301F}}" +
+    "#v3{position:fixed;top:0;left:0;right:0;bottom:calc(72px + env(safe-area-inset-bottom));z-index:6;background:var(--b);color:var(--i);overflow:auto;font-size:15px;line-height:1.5}" +
+    "#v3 .in{max-width:560px;margin:0 auto;padding:calc(22px + env(safe-area-inset-top)) 18px 34px;display:flex;flex-direction:column;gap:14px}" +
+    "#v3 h1{margin:0;font-size:26px;font-weight:700;line-height:1.3;color:var(--i)}#v3 .sub{margin:0;color:var(--m);font-size:14px}" +
+    "#v3 .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}" +
+    "#v3 .gb{width:42px;height:42px;border-radius:14px;background:var(--s);border:1px solid var(--l);color:var(--m);display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer;padding:0}" +
+    "#v3 .card{background:var(--s);border:1px solid var(--l);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px;font:inherit;color:inherit;text-align:start;width:100%;box-sizing:border-box}" +
+    "#v3 button.card{cursor:pointer}" +
+    "#v3 .rw{display:flex;justify-content:space-between;align-items:center;gap:10px}#v3 .mu{color:var(--m);font-size:14px}#v3 .mu b{color:var(--i)}" +
+    "#v3 .big{display:flex;align-items:baseline;gap:8px}#v3 .big b{font-size:50px;font-weight:700;line-height:1.05;color:var(--a);font-variant-numeric:tabular-nums}#v3 .big span{font-size:18px;color:var(--m)}#v3 .big .dt{margin-inline-start:auto;font-size:16px;font-weight:700;color:var(--i)}#v3 .big.w b{color:var(--w)}" +
+    "#v3 .pb{height:10px;border-radius:5px;background:var(--l);overflow:hidden}#v3 .pb i{display:block;height:100%;width:0;background:var(--a);border-radius:5px}#v3 .pb.w i{background:var(--w)}#v3 .pb.g i{background:var(--g)}" +
+    "#v3 .chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;background:var(--ab);color:var(--a);font-size:12.5px;font-weight:600;white-space:nowrap}#v3 .chip.w{background:var(--wb);color:var(--w)}#v3 .chip.g{background:var(--gb);color:var(--g)}#v3 .chip.n{background:var(--l);color:var(--m)}" +
+    "#v3 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}#v3 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}" +
+    "#v3 .st{background:var(--s);border:1px solid var(--l);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:2px;min-width:0}#v3 .st .k{font-size:12.5px;color:var(--m)}#v3 .st .v{display:flex;align-items:baseline;gap:4px}#v3 .st .v b{font-size:24px;line-height:1.15;font-variant-numeric:tabular-nums}#v3 .st .v span{font-size:12px;color:var(--m)}#v3 .st .d{font-size:12px;font-weight:600;color:var(--m)}#v3 .st .d.g{color:var(--g)}#v3 .st .d.w{color:var(--w)}" +
+    "#v3 .sq{width:40px;height:40px;border-radius:12px;background:var(--ab);color:var(--a);display:flex;align-items:center;justify-content:center;flex:none}#v3 .sq.w{background:var(--wb);color:var(--w)}" +
+    "#v3 .tx{flex:1;min-width:0;display:flex;flex-direction:column}#v3 .tx small{font-size:13px;color:var(--m)}" +
+    "#v3 .al{display:flex;align-items:center;gap:12px;background:var(--wb);border:1px solid var(--wb);border-radius:16px;padding:12px 14px;color:var(--w);font:inherit;font-weight:600;text-align:start;cursor:pointer;width:100%}#v3 .al span{flex:1}" +
+    "#v3 .tabs{display:flex;gap:8px;flex-wrap:wrap}#v3 .tabs button{font:inherit;font-weight:600;font-size:14px;padding:8px 16px;border-radius:999px;background:var(--s);color:var(--i);border:1px solid var(--l);cursor:pointer}#v3 .tabs button[aria-pressed=true]{background:var(--a);border-color:var(--a);color:#fff}" +
+    "@media (prefers-color-scheme:dark){#v3 .tabs button[aria-pressed=true]{color:#06231f}#v3-nav button.plus{color:#06231f!important}}" +
+    "#v3 .lr{display:flex;align-items:center;gap:12px;padding:11px 0;border:0;border-bottom:1px solid var(--l);background:transparent;font:inherit;color:inherit;text-align:start;width:100%;cursor:pointer}#v3 .lr:last-child{border-bottom:0}#v3 .lr>b{font-variant-numeric:tabular-nums}" +
+    "#v3 .mi{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--l)}#v3 .mi:last-child{border-bottom:0;padding-bottom:0}#v3 .mi:first-child{padding-top:0}" +
+    "#v3 .bars{display:flex;align-items:flex-end;gap:10px;height:128px}#v3 .bars div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;min-width:0}#v3 .bars i{display:block;width:100%;border-radius:8px 8px 3px 3px;background:var(--a2);min-height:2px}#v3 .bars .on i{background:var(--a)}#v3 .bars span{font-size:11.5px;color:var(--m);font-variant-numeric:tabular-nums;white-space:nowrap}#v3 .bars .on span:first-child{color:var(--i);font-weight:700}" +
+    "#v3 .btn{display:block;text-align:center;padding:14px;border-radius:14px;background:var(--s);border:1px solid var(--l);color:var(--a);font:inherit;font-weight:700;cursor:pointer;width:100%}" +
+    "#v3 .note{margin:0;text-align:center;color:var(--m);font-size:13px}" +
+    "#v3-nav{position:fixed;left:0;right:0;bottom:0;z-index:7;height:calc(72px + env(safe-area-inset-bottom));padding:0 6px env(safe-area-inset-bottom);box-sizing:border-box;background:var(--s);border-top:1px solid var(--l);display:grid;grid-template-columns:1fr 1fr 76px 1fr 1fr;align-items:center}" +
+    "#v3-nav button{font:inherit;border:0;background:transparent;color:var(--m);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;min-height:52px;cursor:pointer}" +
+    "#v3-nav button[aria-current=page]{color:var(--a);font-weight:700}" +
+    "#v3-nav button.plus{width:60px;height:60px;min-height:60px;margin:-26px auto 0;border-radius:30px;border:4px solid var(--b);background:var(--a);color:#fff}" +
+    "#v3-add,#v3-det{border:1px solid var(--l);border-radius:20px;padding:20px;background:var(--b);color:var(--i);width:min(94vw,440px);max-height:86vh;box-sizing:border-box}#v3-add::backdrop,#v3-det::backdrop{background:rgba(0,0,0,.45)}" +
+    "#v3-add h2,#v3-det h2{margin:0 0 4px;font-size:22px}#v3-add p,#v3-det p{margin:0 0 12px;color:var(--m);font-size:14px}#v3-add .os{display:flex;flex-direction:column;gap:10px}" +
+    "#v3-add .o{display:flex;align-items:center;gap:14px;width:100%;text-align:start;font:inherit;color:var(--i);background:var(--s);border:1px solid var(--l);border-radius:16px;padding:14px;cursor:pointer}" +
+    "#v3-add .o .sq{width:46px;height:46px;border-radius:14px;background:var(--ab);color:var(--a);display:flex;align-items:center;justify-content:center;flex:none}#v3-add .o span.t{flex:1;display:flex;flex-direction:column}#v3-add .o b{font-size:17px}#v3-add .o small{color:var(--m);font-size:13px}#v3-add .o>svg{color:var(--m)}" +
+    "#v3-add .x,#v3-det .x{margin-top:12px;width:100%;font:inherit;font-weight:600;color:var(--i);background:var(--s);border:1px solid var(--l);border-radius:14px;padding:13px;cursor:pointer}#v3-det .pr{margin-top:12px;width:100%;font:inherit;font-weight:700;color:#fff;background:var(--a);border:0;border-radius:14px;padding:13px;cursor:pointer}" +
+    "#v3-det ul{list-style:none;margin:0;padding:0}#v3-det li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--l)}#v3-det li:last-child{border-bottom:0}#v3-det li span{color:var(--m)}#v3-det li b{font-variant-numeric:tabular-nums;text-align:end}";
+  document.head.appendChild(css);
+  var v3 = document.createElement("div"); v3.id = "v3"; v3.innerHTML = '<div class="in" id="v3-in"></div>';
+  var nav = document.createElement("nav"); nav.id = "v3-nav"; nav.setAttribute("aria-label", "التنقل");
+  nav.innerHTML = '<button type="button" data-go="home">' + ico(I.home) + '<span>الرئيسية</span></button><button type="button" data-go="log">' + ico(I.list) + '<span>السجل</span></button>' +
+    '<button type="button" class="plus" id="v3-plus" aria-label="إضافة">' + ico(I.plus, 28) + '</button>' +
+    '<button type="button" data-go="mnt">' + ico(I.tool) + '<span>الصيانة</span></button><button type="button" data-go="stat">' + ico(I.chart) + '<span>الإحصائيات</span></button>';
+  var add = document.createElement("dialog"); add.id = "v3-add"; add.setAttribute("aria-labelledby", "v3-add-h");
+  function opt(k, ic, t, s){ return '<button type="button" class="o" data-add="' + k + '"><span class="sq">' + ico(I[ic], 24) + '</span><span class="t"><b>' + t + '</b><small>' + s + '</small></span>' + ico(I.chev, 18) + '</button>'; }
+  add.innerHTML = '<h2 id="v3-add-h">إضافة</h2><p>ماذا تريد أن تسجّل؟</p><div class="os">' + opt("fuel", "fuel", "تعبئة بنزين", "العداد ثم مبلغ التعبئة") + opt("svc", "tool", "صيانة", "زيت، إطارات، فلاتر، وغيرها") + opt("odo", "gauge", "قراءة العداد", "لتحديث الممشى فقط، بلا مصروف") + '</div><button type="button" class="x" id="v3-add-x">إلغاء</button>';
+  var det = document.createElement("dialog"); det.id = "v3-det"; det.setAttribute("aria-labelledby", "v3-det-h");
+  det.innerHTML = '<h2 id="v3-det-h"></h2><div id="v3-det-b"></div><button type="button" class="pr" id="v3-det-go">فتح صفحة السيارة للتعديل</button><button type="button" class="x" id="v3-det-x">إغلاق</button>';
+  document.body.appendChild(v3); document.body.appendChild(nav); document.body.appendChild(add); document.body.appendChild(det);
+
+  /* العودة تلقائياً بعد إغلاق نوافذ التسجيل في صفحة السيارة */
+  var watch = null;
+  function back(to){
+    if (watch) clearInterval(watch);
+    var seen = false, quiet = 0, t0 = Date.now();
+    watch = setInterval(function(){
+      var open = [].some.call(document.querySelectorAll("dialog[open]"), function(d){ return d !== add && d !== det; });
+      if (open){ seen = true; quiet = 0; return; }
+      if (seen && ++quiet >= 2){ clearInterval(watch); watch = null; go(to); }
+      else if (!seen && Date.now() - t0 > 120000){ clearInterval(watch); watch = null; }
+    }, 350);
+  }
+  function stat(k, v, u, d, cls){ return '<div class="st"><span class="k">' + k + '</span><div class="v"><b>' + v + '</b><span>' + u + '</span></div>' + (d ? '<span class="d' + (cls ? " " + cls : "") + '">' + d + '</span>' : '') + '</div>'; }
+  function prevYm(ym, n){ var d = new Date(Number(ym.slice(0,4)), Number(ym.slice(5,7)) - 1 - (n == null ? 1 : n), 1); return d.getFullYear() + "-" + pad(d.getMonth() + 1); }
+  function mntSub(o){
+    if (!o.last) return "لم تُسجَّل له صيانة بعد";
+    var p = [];
+    if (o.remKm != null) p.push(o.remKm > 0 ? "باقي " + n0(o.remKm) + " كم" : "تجاوز " + n0(-o.remKm) + " كم");
+    if (o.estDate) p.push((o.estDays > 0 ? "نحو " : "منذ ") + dShort(o.estDate)); else if (o.remDays != null) p.push(o.remDays > 0 ? "باقي " + days(o.remDays) : "تجاوز " + days(-o.remDays));
+    p.push("كل " + [o.km > 0 ? n0(o.km) + " كم" : "", o.months > 0 ? (o.months % 12 === 0 ? (o.months / 12 === 1 ? "سنة" : o.months / 12 === 2 ? "سنتين" : o.months / 12 + " سنوات") : o.months + " أشهر") : ""].filter(Boolean).join(" أو "));
+    return p.join(" · ");
+  }
+  var ST = {due:["حان", "w"], near:["اقترب", "w"], ok:["جيد", "g"], none:["غير مسجّل", "n"]};
+
+  function rHome(M){
+    var tail = "";
+    var h = '<div class="hd"><div><h1>دفتر البنزين</h1><p class="sub">' + esc(M.car ? M.name + (M.top != null ? " · العداد " + n0(M.top) + " كم" : "") : "لم تُضف سيارة بعد") + '</p></div><button type="button" class="gb" data-set="1" aria-label="الإعدادات وصفحة السيارة">' + ico(I.gear, 21) + '</button></div>';
+    var due = false; try { due = S.odoDue(); } catch(e){}
+    if (due) h += '<button type="button" class="al" data-add="odo">' + ico(I.gauge) + '<span>سجّل قراءة العداد ليبقى التقدير دقيقاً</span>' + ico(I.chev, 18) + '</button>';
+    if (!M.car || (!M.fills.length && M.top == null)) return h + '<div class="card"><b>ابدأ بأول تعبئة</b><p class="sub">اضغط زر الإضافة وسجّل قراءة العداد ومبلغ التعبئة، وتظهر هنا التقديرات والإحصائيات.</p></div>';
+    var nx = M.next;
+    if (nx && nx.range){
+      var low = nx.pct <= 15;
+      h += '<button type="button" class="card" data-det="next"><div class="rw"><span class="mu">التعبئة القادمة تقريباً</span><span class="chip">تقديري</span></div>' +
+        (nx.days != null ? '<div class="big' + (low ? " w" : "") + '"><b>' + nx.days + '</b><span>' + (nx.days === 1 ? "يوم" : nx.days === 2 ? "يومان" : nx.days > 10 ? "يوماً" : "أيام") + '</span><span class="dt">' + esc(dLong(nx.date)) + '</span></div>' : '<div class="big' + (low ? " w" : "") + '"><b>' + n0(nx.rem) + '</b><span>كم باقية</span></div>') +
+        '<div class="pb' + (low ? " w" : "") + '"><i data-w="' + nx.pct + '"></i></div><div class="rw mu"><span>في الخزان نحو <b>' + n0(nx.pct) + '%</b></span><span>يكفي <b>' + n0(nx.rem) + '</b> كم</span></div></button>';
+    } else h += '<div class="card"><span class="mu">التعبئة القادمة</span><p class="sub">يظهر التقدير بعد تسجيل تعبئة بقراءة العداد' + (M.daily ? "" : " وقراءتين للعداد في يومين مختلفين") + '.</p></div>';
+    var ym = todayS().slice(0,7), a = M.month(ym), b = M.month(prevYm(ym)), kd = "", kc = "";
+    if (M.kmlLast && M.kmlAll && M.iv.length > 1){ var df = M.kmlLast - M.kmlAll; kd = Math.abs(df) < 0.15 ? "مثل معدلك " + n1(M.kmlAll) : (df > 0 ? "أفضل من معدلك " : "أقل من معدلك ") + n1(M.kmlAll); kc = df > 0.15 ? "g" : df < -0.15 ? "w" : ""; }
+    else if (M.kmlSrc === "dash" && M.kml) kd = "من قراءة شاشة السيارة";
+    var md = "", mc = ""; if (b.total > 0 && a.total > 0){ var pc = Math.round((a.total - b.total) / b.total * 100); md = pc === 0 ? "مثل " + mShort(prevYm(ym)) : (pc < 0 ? "أقل " : "أكثر ") + Math.abs(pc) + "% من " + mShort(prevYm(ym)); mc = pc < 0 ? "g" : pc > 0 ? "w" : ""; } else if (a.n) md = a.n + (a.n === 1 ? " تعبئة" : a.n === 2 ? " تعبئتان" : " تعبئات");
+    h += '<div class="g2">' + stat("الاستهلاك", M.kml ? n1(M.kml) : "—", "كم/لتر", kd, kc) + stat("تكلفة الكيلومتر", M.perKm ? n2(M.perKm) : "—", "ريال/كم", M.perKm ? "بنزين فقط" : "") + '</div>' +
+      '<div class="g2">' + stat("مصروف " + mShort(ym), n0(a.total), "ريال", md, mc) + stat("ممشى " + mShort(ym), a.km != null ? n0(a.km) : "—", "كم", M.daily ? n0(M.daily) + " كم يومياً" : (a.from ? "منذ " + dShort(a.from) : "")) + '</div>';
+    var nxt = M.items.filter(function(o){ return o.last && o.st !== "none"; }).sort(function(x, y){ return (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); })[0];
+    if (nxt){ var w = nxt.st !== "ok"; h += '<button type="button" class="card" data-go="mnt"><div class="rw"><span class="sq' + (w ? " w" : "") + '">' + ico(I.tool, 20) + '</span><span class="tx"><b>' + esc(nxt.name) + '</b><small>' + esc(mntSub(nxt).split(" · ").slice(0, 2).join(" · ")) + '</small></span>' + ico(I.chev, 18) + '</div><div class="pb' + (w ? " w" : " g") + '"><i data-w="' + nxt.pct + '"></i></div></button>'; }
+    if (lsGet("masroof-v1")) tail = '<button type="button" class="btn" data-exp="1">مصروف البيت: بياناتك محفوظة · فتح</button>';
+    if (M.lastF) h += '<p class="note">آخر تعبئة: ' + esc(dShort(M.lastF.ts)) + ' · ' + n0(M.lastF.amount) + ' ريال' + (M.lastF.L ? ' · ' + n1(M.lastF.L) + ' لتراً' : '') + '</p>';
+    return h + tail;
+  }
+  function logRows(M){
+    var ivBy = {}; M.iv.forEach(function(x){ ivBy[x.id] = x; });
+    var rows = M.fills.map(function(f){ var iv = ivBy[f.id]; return {k:"f", id:f.id, d:String(f.ts).slice(0,10), ts:String(f.ts), a:num(f.amount) || 0, t:"تعبئة" + (f.L ? " · " + n1(f.L) + " لتراً" : ""), s:[iv ? n0(iv.dist) + " كم" : "", iv && iv.kml ? n1(iv.kml) + " كم/لتر" : ""].filter(Boolean).join(" · "), f:f, iv:iv}; })
+      .concat(M.svcs.map(function(s){ var it = M.items.filter(function(o){ return o.id === s.itemId; })[0]; return {k:"s", id:s.id, d:String(s.ts).slice(0,10), ts:String(s.ts), a:num(s.cost) || 0, t:it ? it.name : (s.note || "صيانة"), s:num(s.odo) != null ? "عند " + n0(s.odo) + " كم" : "", v:s}; }));
+    return rows.sort(function(x, y){ return x.ts < y.ts ? 1 : -1; });
+  }
+  function rLog(M){
+    var h = '<div><h1>السجل</h1><p class="sub">كل التعبئات والصيانة</p></div><div class="tabs">' + [["all","الكل"],["f","تعبئات"],["s","صيانة"]].map(function(t){ return '<button type="button" data-lf="' + t[0] + '" aria-pressed="' + (logF === t[0]) + '">' + t[1] + '</button>'; }).join("") + '</div>';
+    var rows = logRows(M).filter(function(r){ return logF === "all" || r.k === logF; });
+    if (!rows.length) return h + '<div class="card"><p class="sub">لا توجد سجلات بعد.</p></div>';
+    var by = {}, ord = []; rows.forEach(function(r){ var m = r.d.slice(0,7); if (!by[m]){ by[m] = []; ord.push(m); } by[m].push(r); });
+    ord.forEach(function(m){ var mm = M.month(m), tot = by[m].reduce(function(a, r){ return a + r.a; }, 0);
+      h += '<div class="card"><div class="rw mu"><span>' + esc(mName(m)) + '</span><span>' + n0(tot) + ' ريال' + (logF === "all" && mm.km != null ? ' · ' + n0(mm.km) + ' كم' : '') + '</span></div><div>' + by[m].map(function(r){
+        return '<button type="button" class="lr" data-row="' + r.k + ":" + esc(r.id) + '"><span class="sq' + (r.k === "s" ? " w" : "") + '">' + ico(r.k === "s" ? I.tool : I.fuel, 19) + '</span><span class="tx"><b>' + esc(r.t) + '</b><small>' + esc(dShort(r.d) + (r.s ? " · " + r.s : "")) + '</small></span><b>' + n0(r.a) + '</b></button>'; }).join("") + '</div></div>'; });
+    return h + '<p class="note">اضغط أي سطر لعرض تفاصيله</p>';
+  }
+  function rMnt(M){
+    var h = '<div><h1>الصيانة</h1><p class="sub">ما حان وما اقترب، بالكيلومتر والتاريخ</p></div>';
+    var rank = {due:0, near:1, ok:2, none:3}, list = M.items.slice().sort(function(x, y){ return rank[x.st] - rank[y.st] || (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); });
+    var known = list.filter(function(o){ return o.last; }), unk = list.filter(function(o){ return !o.last; });
+    if (known.length) h += '<div class="card"><div>' + known.map(function(o){ var c = ST[o.st]; return '<div class="mi"><div class="rw"><span class="tx"><b>' + esc(o.name) + '</b><small>' + esc(mntSub(o)) + '</small></span><span class="chip ' + c[1] + '">' + c[0] + '</span></div><div class="pb ' + (o.st === "ok" ? "g" : "w") + '"><i data-w="' + o.pct + '"></i></div></div>'; }).join("") + '</div></div>';
+    else h += '<div class="card"><p class="sub">لم تُسجَّل أي صيانة بعد. سجّل آخر تغيير زيت مثلاً ليبدأ حساب الموعد القادم.</p></div>';
+    var y = todayS().slice(0,4), yc = 0; M.svcs.forEach(function(s){ if (String(s.ts).slice(0,4) === y) yc += num(s.cost) || 0; });
+    var first = M.pts.length ? M.pts[0] : null, yKm = first ? Math.max(0, M.top - M.odoAt(Math.max(first.t, new Date(Number(y), 0, 1, 12).getTime()))) : 0;
+    h += '<div class="g2">' + stat("صيانة هذا العام", n0(yc), "ريال") + stat("نصيب الكيلومتر", yKm > 0 && yc > 0 ? n2(yc / yKm) : "—", "ريال/كم") + '</div>';
+    if (unk.length) h += '<p class="note">بنود بلا سجل: ' + esc(unk.map(function(o){ return o.name; }).join("، ")) + '</p>';
+    return h + '<button type="button" class="btn" data-open="mnt">تسجيل صيانة أو تعديل البنود والمواعيد</button>';
+  }
+  function rStat(M){
+    var h = '<div><h1>الإحصائيات</h1><p class="sub">' + (statP === 0 ? "كل السجلات" : statP === 12 ? "آخر 12 شهراً" : "آخر 6 أشهر") + '</p></div><div class="tabs">' + [[6,"6 أشهر"],[12,"السنة"],[0,"الكل"]].map(function(t){ return '<button type="button" data-sp="' + t[0] + '" aria-pressed="' + (statP === t[0]) + '">' + t[1] + '</button>'; }).join("") + '</div>';
+    var ym = todayS().slice(0,7), ms = []; for (var i = 5; i >= 0; i--) ms.push(prevYm(ym, i));
+    var vals = ms.map(function(m){ return M.month(m).total; }), mx = Math.max.apply(null, vals);
+    h += '<div class="card"><div class="rw"><b>المصروف الشهري</b><span class="mu">بنزين وصيانة · ريال</span></div>' + (mx > 0 ? '<div class="bars">' + ms.map(function(m, i){ return '<div' + (i === 5 ? ' class="on"' : '') + '><span>' + (vals[i] ? n0(vals[i]) : "") + '</span><i data-h="' + Math.round(vals[i] / mx * 84) + '"></i><span>' + esc(mShort(m)) + '</span></div>'; }).join("") + '</div>' : '<p class="sub">لا مصروفات مسجّلة في هذه الأشهر.</p>') + '</div>';
+    var iv = M.iv.filter(function(x){ return x.kml > 0; }).slice(-8);
+    h += '<div class="card"><div class="rw"><b>الاستهلاك</b><span class="mu">كم/لتر' + (M.kmlAll && iv.length > 1 ? ' · المنقّط معدلك ' + n1(M.kmlAll) : '') + '</span></div>';
+    if (iv.length > 1){ var lo = Math.min.apply(null, iv.map(function(x){ return x.kml; })), hi = Math.max.apply(null, iv.map(function(x){ return x.kml; })), pd = Math.max(0.3, (hi - lo) * 0.25); lo -= pd; hi += pd;
+      var X = function(i){ return 16 + i * (318 / (iv.length - 1)); }, Y = function(v){ return 76 - (v - lo) / (hi - lo) * 66; };
+      h += '<svg role="img" aria-label="اتجاه الاستهلاك" viewBox="0 0 350 84" width="100%" height="84"><path d="M0 ' + Y(M.kmlAll).toFixed(1) + ' H350" fill="none" stroke="var(--l)" stroke-width="1.5" stroke-dasharray="4 4"/><polyline fill="none" stroke="var(--a)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="' + iv.map(function(x, i){ return X(i).toFixed(1) + "," + Y(x.kml).toFixed(1); }).join(" ") + '"/>' +
+        iv.map(function(x, i){ var l = i === iv.length - 1; return '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(x.kml).toFixed(1) + '" r="' + (l ? 5 : 3.5) + '" fill="' + (l ? "var(--a)" : "var(--s)") + '" stroke="var(--a)" stroke-width="2"/>'; }).join("") + '</svg><div class="rw mu"><span>الأقل <b>' + n1(Math.min.apply(null, iv.map(function(x){ return x.kml; }))) + '</b></span><span>آخر تعبئة <b>' + n1(iv[iv.length - 1].kml) + '</b></span><span>الأفضل <b>' + n1(Math.max.apply(null, iv.map(function(x){ return x.kml; }))) + '</b></span></div>'; }
+    else h += '<p class="sub">' + (M.kml ? "الاستهلاك الحالي " + n1(M.kml) + " كم/لتر" + (M.kmlSrc === "dash" ? " (من قراءة شاشة السيارة)" : "") + ". " : "") + 'يظهر الرسم بعد ثلاث تعبئات مسجّلة بالعداد.</p>';
+    h += '</div>';
+    /* مجاميع الفترة */
+    var t1 = Date.now(), t0 = statP ? new Date(new Date().getFullYear(), new Date().getMonth() - statP + 1, 1, 12).getTime() : (M.pts.length ? M.pts[0].t : t1), inP = function(x){ var t = new Date(String(x.ts).slice(0,10) + "T12:00").getTime(); return t >= t0 && t <= t1 + 864e5; };
+    var fu = 0, sv = 0, L = 0; M.fills.filter(inP).forEach(function(f){ fu += num(f.amount) || 0; L += f.L || 0; }); M.svcs.filter(inP).forEach(function(s){ sv += num(s.cost) || 0; });
+    var first = M.pts.length ? M.pts[0].t : null, a0 = first != null ? Math.max(t0, first) : null, km = a0 != null ? Math.max(0, M.top - M.odoAt(a0)) : null;
+    var firstRec = Math.min.apply(null, M.fills.concat(M.svcs).map(function(x){ return new Date(String(x.ts).slice(0,10) + "T12:00").getTime(); }).concat([t1])), dd = Math.max(1, Math.round((t1 - Math.max(t0, firstRec)) / 864e5) + 1);
+    h += '<div class="g3">' + stat("المسافة", km != null ? n0(km) : "—", "كم") + stat("المجموع", n0(fu + sv), "ريال") + stat("تكلفة اليوم", n0((fu + sv) / dd), "ريال") + '</div>' +
+      '<div class="g3">' + stat("البنزين", n0(fu), "ريال") + stat("الصيانة", n0(sv), "ريال") + stat("اللترات", n0(L), "لتر") + '</div>';
+    return h + '<p class="note">المسافة من قراءات العداد المسجّلة؛ كلما سجّلت العداد أكثر كانت الأرقام أدق.</p>';
+  }
+  var lastM = null;
+  function draw(){
+    var M = lastM = model();
+    $("v3-in").innerHTML = cur === "log" ? rLog(M) : cur === "mnt" ? rMnt(M) : cur === "stat" ? rStat(M) : rHome(M);
+    /* المقاسات تُضبط بالسكربت لأن سياسة أمان الصفحة تمنع الأنماط المضمّنة */
+    [].forEach.call(v3.querySelectorAll(".pb i[data-w]"), function(b){ b.style.width = b.dataset.w + "%"; });
+    [].forEach.call(v3.querySelectorAll(".bars i[data-h]"), function(b){ b.style.height = b.dataset.h + "px"; });
+  }
+  function mark(k){ [].forEach.call(nav.querySelectorAll("button[data-go]"), function(b){ b.setAttribute("aria-current", b.dataset.go === k ? "page" : "false"); }); }
+  function go(k){ cur = k; v3.hidden = false; mark(k); try { S.stats(); } catch(e){} draw(); v3.scrollTop = 0; }
+  window.__shellHook = function(v){ if (v === "car" || v === "exp"){ v3.hidden = true; mark(""); } };
+  function doAdd(k){
+    var prev = cur;
+    if (k === "odo"){ S.show("car"); try { $("mnt-open").click(); $("odo-open").click(); } catch(e){} back(prev); return; }
+    S.addCar(); back(prev);
+  }
+  function showDet(title, rows, canEdit){
+    $("v3-det-h").textContent = title; $("v3-det-b").innerHTML = '<ul>' + rows.filter(function(r){ return r && r[1] != null && r[1] !== ""; }).map(function(r){ return '<li><span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b></li>'; }).join("") + '</ul>';
+    $("v3-det-go").hidden = !canEdit; try { det.showModal(); } catch(e){ det.setAttribute("open", ""); } det.scrollTop = 0;
+  }
+  nav.addEventListener("click", function(ev){ var b = ev.target.closest("button"); if (!b) return; if (b.id === "v3-plus"){ try { add.showModal(); } catch(e){ add.setAttribute("open", ""); } return; } if (b.dataset.go) go(b.dataset.go); });
+  add.addEventListener("click", function(ev){ if (ev.target.closest("#v3-add-x")){ add.close(); return; } var b = ev.target.closest("button[data-add]"); if (!b) return; add.close(); doAdd(b.dataset.add); });
+  det.addEventListener("click", function(ev){ if (ev.target.closest("#v3-det-x")){ det.close(); return; } if (ev.target.closest("#v3-det-go")){ det.close(); S.show("car"); } });
+  v3.addEventListener("click", function(ev){
+    var b = ev.target.closest("button"); if (!b) return; var M = lastM || model();
+    if (b.dataset.set){ S.show("car"); return; }
+    if (b.dataset.exp){ S.show("exp"); return; }
+    if (b.dataset.add){ doAdd(b.dataset.add); return; }
+    if (b.dataset.go){ go(b.dataset.go); return; }
+    if (b.dataset.lf){ logF = b.dataset.lf; draw(); return; }
+    if (b.dataset.sp != null && b.dataset.sp !== ""){ statP = Number(b.dataset.sp); draw(); return; }
+    if (b.dataset.open === "mnt"){ var prev = cur; S.show("car"); try { $("mnt-open").click(); } catch(e){} back(prev); return; }
+    if (b.dataset.det === "next" && M.next){ var nx = M.next, f = M.lastF;
+      showDet("تقدير التعبئة القادمة", [["آخر تعبئة", dShort(f.ts) + " · " + n0(f.amount) + " ريال"], ["العداد عند التعبئة", n0(f.odo) + " كم"], ["العداد الآن", n0(M.top) + " كم" + (M.topDay ? " (" + dShort(M.topDay) + ")" : "")], ["مشيت منذ التعبئة", n0(nx.since) + " كم"],
+        ["مدى التعبئة", n0(nx.range) + " كم" + (nx.fromDash ? " (قراءة السيارة)" : " (لترات × الاستهلاك)")], ["الباقي تقريباً", n0(nx.rem) + " كم"], ["ممشاك اليومي", M.daily ? n0(M.daily) + " كم (آخر 14 يوماً)" : "غير معروف بعد"], ["التعبئة القادمة", nx.date ? dLong(nx.date) + " · بعد " + days(nx.days) : "تحتاج قراءات عداد أكثر"]], false); return; }
+    if (b.dataset.row){ var p = b.dataset.row.split(":"), r = logRows(M).filter(function(x){ return x.k === p[0] && x.id === p.slice(1).join(":"); })[0]; if (!r) return;
+      if (r.k === "f"){ var f2 = r.f, iv = r.iv; showDet("تعبئة " + dShort(r.d), [["المبلغ", n2(r.a) + " ريال"], ["النوع وسعر اللتر", (f2.type ? "بنزين " + f2.type + " · " : "") + (num(f2.price) ? n2(f2.price) + " ريال" : "")], ["اللترات", f2.L ? n1(f2.L) + " لتر" : ""], ["العداد", num(f2.odo) != null ? n0(f2.odo) + " كم" : ""],
+          ["المسافة منذ التعبئة السابقة", iv ? n0(iv.dist) + " كم" : ""], ["استهلاك تلك المسافة", iv && iv.kml ? n1(iv.kml) + " كم/لتر" : ""], ["قراءة شاشة السيارة", num(f2.avg) > 0 ? n1(f2.avg) + " " + (String(f2.avgUnit || "").indexOf("km/l") === 0 ? "كم/لتر" : "لتر/100 كم") : ""], ["المدى بعد التعبئة", num(f2.range) > 0 ? n0(f2.range) + " كم" : ""]], true); }
+      else { var s2 = r.v; showDet(r.t, [["التاريخ", dLong(r.d)], ["التكلفة", n2(r.a) + " ريال"], ["العداد", num(s2.odo) != null ? n0(s2.odo) + " كم" : ""], ["ملاحظة", s2.note || ""]], true); }
+      return; }
+  });
+  /* تنبيه العداد يظهر في وقته حتى لو كان التطبيق مفتوحاً */
+  var dueWas = false; setInterval(function(){ if (v3.hidden || document.hidden || cur !== "home") return; var d = false; try { S.stats(); d = S.odoDue(); } catch(e){} if (d !== dueWas){ dueWas = d; draw(); } }, 60000);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden && !v3.hidden) go(cur); });
+  window.addEventListener("storage", function(){ if (!v3.hidden) draw(); });
+  go("home");
+})();
 
 if ("serviceWorker" in navigator && location.protocol === "https:"){
   navigator.serviceWorker.register("sw.js").catch(function(){});

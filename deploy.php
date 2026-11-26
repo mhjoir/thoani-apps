@@ -4,7 +4,7 @@
 if (php_sapi_name() !== 'cli') { http_response_code(403); exit; }
 $src = __DIR__;
 $dst = dirname(__DIR__);
-$apps = ['fuel', 'masroof', 'arkhas'];
+$apps = ['fuel', 'masroof', 'arkhas', 'budget'];
 function copy_tree($from, $to, &$out) {
     if (!is_dir($to) && !mkdir($to, 0755, true)) { $out[] = "FAIL mkdir $to"; return; }
     foreach (scandir($from) as $name) {

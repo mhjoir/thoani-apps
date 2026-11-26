@@ -1,5 +1,5 @@
 /* دفتر البنزين: تشغيل بدون اتصال. غيّر رقم النسخة عند كل تحديث للملفات. */
-var CACHE = "fuel-log-v11";
+var CACHE = "fuel-log-v12", PRE = "fuel-log-";
 var SHELL = ["./", "index.html", "standalone.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-180.png"];
 
 self.addEventListener("install", function(e){
@@ -9,7 +9,7 @@ self.addEventListener("install", function(e){
 });
 self.addEventListener("activate", function(e){
   e.waitUntil(caches.keys().then(function(keys){
-    return Promise.all(keys.filter(function(k){ return k !== CACHE; }).map(function(k){ return caches.delete(k); }));
+    return Promise.all(keys.filter(function(k){ return k !== CACHE && k.indexOf(PRE) === 0; }).map(function(k){ return caches.delete(k); }));
   }).then(function(){ return self.clients.claim(); }));
 });
 self.addEventListener("fetch", function(e){
