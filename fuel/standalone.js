@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "72";
+var VERSION = "73";
 /* وضع التطبيق: fuel = دفتر البنزين (السيارة فقط)، budget = دفتر المصروف (مصروف البيت). يحدّده البناء. */
 var APP_MODE = "fuel";
 /* خادم النسخ الاحتياطي واحد للتطبيقين حتى تبقى البيانات نفسها */
@@ -1677,9 +1677,9 @@ msPush();
     var pts = []; Object.keys(byDay).sort().forEach(function(d){ if (!pts.length || byDay[d] >= pts[pts.length - 1].o) pts.push({d:d, o:byDay[d], t:new Date(d + "T12:00").getTime()}); });
     M.pts = pts; M.top = pts.length ? pts[pts.length - 1].o : null; M.topDay = pts.length ? pts[pts.length - 1].d : null;
     M.odoAt = function(t){ if (!pts.length) return null; if (t <= pts[0].t) return pts[0].o; for (var i = 1; i < pts.length; i++){ if (t <= pts[i].t){ var A = pts[i - 1], B = pts[i]; return A.o + (B.o - A.o) * (t - A.t) / (B.t - A.t); } } return pts[pts.length - 1].o; };
-    /* الممشى اليومي: متوسط آخر 14 يوماً مما سُجّل من قراءات */
-    var now = Date.now(); M.daily = null;
-    if (pts.length > 1){ var t0 = Math.max(pts[0].t, now - 14 * 864e5), span = (pts[pts.length - 1].t - t0) / 864e5; if (span >= 1) M.daily = Math.max(0, (M.top - M.odoAt(t0)) / span); }
+    /* الممشى اليومي: متوسط كل القراءات المسجّلة (حتى آخر 90 يوماً) = فرق العداد ÷ عدد الأيام */
+    var now = Date.now(); M.daily = null; M.dailyDays = 0; M.dailyKm = 0;
+    if (pts.length > 1){ var t0 = Math.max(pts[0].t, pts[pts.length - 1].t - 90 * 864e5), span = (pts[pts.length - 1].t - t0) / 864e5; if (span >= 1){ M.dailyKm = Math.max(0, M.top - M.odoAt(t0)); M.dailyDays = Math.round(span); M.daily = M.dailyKm / span; } }
     /* الاستهلاك: لترات كل تعبئة تُحسب على المسافة حتى التعبئة التي بعدها */
     var fo = M.fills.filter(function(f){ return num(f.odo) != null; }); M.iv = [];
     for (var i = 1; i < fo.length; i++){ var dist = Number(fo[i].odo) - Number(fo[i - 1].odo), L = fo[i - 1].L; if (dist > 0) M.iv.push({d:String(fo[i].ts).slice(0,10), dist:dist, L:L, kml:L > 0 ? dist / L : null, id:fo[i].id}); }
@@ -1691,13 +1691,16 @@ msPush();
     M.kml = M.kmlLast || M.kmlAll;
     M.price = M.lastF && num(M.lastF.price) > 0 ? Number(M.lastF.price) : null;
     M.perKm = M.price && M.kmlAll ? M.price / M.kmlAll : null;
-    /* التعبئة القادمة: مدى آخر تعبئة (قراءة السيارة إن سُجّلت، وإلا اللترات × الاستهلاك) ناقص ما مُشي بعدها */
+    /* التعبئة القادمة:
+       المدى = لترات آخر تعبئة × متوسط الاستهلاك (كل التعبئات)، أو قراءة مدى السيارة إن سُجّلت
+       الباقي = المدى − ما مُشي منذ التعبئة (حتى آخر قراءة عداد)
+       الموعد = تاريخ آخر قراءة + الباقي ÷ متوسط الممشى اليومي */
     M.next = null;
     if (M.lastF && num(M.lastF.odo) != null && M.top != null){
       var range = num(M.lastF.range) > 0 ? Number(M.lastF.range) : (M.lastF.L > 0 && M.kmlAll ? M.lastF.L * M.kmlAll : null), since = Math.max(0, M.top - Number(M.lastF.odo));
-      if (range){ var rem = Math.max(0, range - since), dl = M.daily > 0 ? rem / M.daily : null, dt = null;
-        if (dl != null){ var x = new Date(); x.setDate(x.getDate() + Math.floor(dl)); dt = dS(x); }
-        M.next = {range:range, since:since, rem:rem, pct:Math.max(0, Math.min(100, rem / range * 100)), days:dl != null ? Math.floor(dl) : null, date:dt, fromDash:num(M.lastF.range) > 0}; }
+      if (range){ var rem = range - since, over = rem <= 0, fd = String(M.lastF.ts).slice(0,10), anchor = M.topDay && M.topDay > fd ? M.topDay : fd, today = todayS(), dt = null, dn = null, last = null;
+        if (M.daily > 0){ var e = new Date(anchor + "T12:00"); e.setDate(e.getDate() + Math.max(0, Math.round(Math.max(0, rem) / M.daily))); dt = dS(e); if (dt < today) dt = today; dn = Math.round((new Date(dt + "T12:00") - new Date(today + "T12:00")) / 864e5); last = Math.round(range / M.daily); }
+        M.next = {range:range, since:since, rem:Math.max(0, rem), extra:over ? -rem : 0, over:over, pct:Math.max(0, Math.min(100, rem / range * 100)), days:dn, date:dt, lasts:last, anchor:anchor, stale:anchor < today, fromDash:num(M.lastF.range) > 0}; }
       else M.next = {since:since};
     }
     /* مصروف وممشى كل شهر */
@@ -1751,7 +1754,7 @@ msPush();
     "#v3 .mi{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--l)}#v3 .mi:last-child{border-bottom:0;padding-bottom:0}#v3 .mi:first-child{padding-top:0}" +
     "#v3 .bars{display:flex;align-items:flex-end;gap:10px;height:128px}#v3 .bars div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;min-width:0}#v3 .bars i{display:block;width:100%;border-radius:8px 8px 3px 3px;background:var(--a2);min-height:2px}#v3 .bars .on i{background:var(--a)}#v3 .bars span{font-size:11.5px;color:var(--m);font-variant-numeric:tabular-nums;white-space:nowrap}#v3 .bars .on span:first-child{color:var(--i);font-weight:700}" +
     "#v3 .btn{display:block;text-align:center;padding:14px;border-radius:14px;background:var(--s);border:1px solid var(--l);color:var(--a);font:inherit;font-weight:700;cursor:pointer;width:100%}" +
-    "#v3 .note{margin:0;text-align:center;color:var(--m);font-size:13px}" +
+    "#v3 .note{margin:0;text-align:center;color:var(--m);font-size:13px}#v3 .ln{border-top:1px solid var(--l);padding-top:10px;color:var(--m);font-size:13.5px}" +
     "#v3-nav{position:fixed;left:0;right:0;bottom:0;z-index:7;height:calc(72px + env(safe-area-inset-bottom));padding:0 6px env(safe-area-inset-bottom);box-sizing:border-box;background:var(--s);border-top:1px solid var(--l);display:grid;grid-template-columns:1fr 1fr 76px 1fr 1fr;align-items:center}" +
     "#v3-nav button{font:inherit;border:0;background:transparent;color:var(--m);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;min-height:52px;cursor:pointer}" +
     "#v3-nav button[aria-current=page]{color:var(--a);font-weight:700}" +
@@ -1797,6 +1800,14 @@ msPush();
     p.push("كل " + [o.km > 0 ? n0(o.km) + " كم" : "", o.months > 0 ? (o.months % 12 === 0 ? (o.months / 12 === 1 ? "سنة" : o.months / 12 === 2 ? "سنتين" : o.months / 12 + " سنوات") : o.months + " أشهر") : ""].filter(Boolean).join(" أو "));
     return p.join(" · ");
   }
+  /* قراءة العداد عند آخر تغيير، والقراءة الحالية، وما مُشي بينهما */
+  function odoLine(o, M){
+    if (!o.last) return "";
+    var at = num(o.last.odo), p = ["آخر تغيير " + dShort(o.last.ts) + (at != null ? " عند " + n0(at) + " كم" : "")];
+    if (M.top != null) p.push("العداد الآن " + n0(M.top) + " كم");
+    if (at != null && M.top != null && M.top >= at) p.push("مشيت " + n0(M.top - at) + " كم");
+    return '<small>' + esc(p.join(" · ")) + '</small>';
+  }
   var ST = {due:["حان", "w"], near:["اقترب", "w"], ok:["جيد", "g"], none:["غير مسجّل", "n"]};
 
   function rHome(M){
@@ -1805,13 +1816,14 @@ msPush();
     var due = false; try { due = S.odoDue(); } catch(e){}
     if (due) h += '<button type="button" class="al" data-add="odo">' + ico(I.gauge) + '<span>سجّل قراءة العداد ليبقى التقدير دقيقاً</span>' + ico(I.chev, 18) + '</button>';
     if (!M.car || (!M.fills.length && M.top == null)) return h + '<div class="card"><b>ابدأ بأول تعبئة</b><p class="sub">اضغط زر الإضافة وسجّل قراءة العداد ومبلغ التعبئة، وتظهر هنا التقديرات والإحصائيات.</p></div>';
-    var nx = M.next;
+    var nx = M.next, lastNote = M.lastF ? '<div class="ln">آخر تعبئة: ' + esc(dShort(M.lastF.ts)) + ' · ' + n0(M.lastF.amount) + ' ريال' + (M.lastF.L ? ' · ' + n1(M.lastF.L) + ' لتراً' : '') + '</div>' : '';
     if (nx && nx.range){
-      var low = nx.pct <= 15;
-      h += '<button type="button" class="card" data-det="next"><div class="rw"><span class="mu">التعبئة القادمة تقريباً</span><span class="chip">تقديري</span></div>' +
-        (nx.days != null ? '<div class="big' + (low ? " w" : "") + '"><b>' + nx.days + '</b><span>' + (nx.days === 1 ? "يوم" : nx.days === 2 ? "يومان" : nx.days > 10 ? "يوماً" : "أيام") + '</span><span class="dt">' + esc(dLong(nx.date)) + '</span></div>' : '<div class="big' + (low ? " w" : "") + '"><b>' + n0(nx.rem) + '</b><span>كم باقية</span></div>') +
-        '<div class="pb' + (low ? " w" : "") + '"><i data-w="' + nx.pct + '"></i></div><div class="rw mu"><span>في الخزان نحو <b>' + n0(nx.pct) + '%</b></span><span>يكفي <b>' + n0(nx.rem) + '</b> كم</span></div></button>';
-    } else h += '<div class="card"><span class="mu">التعبئة القادمة</span><p class="sub">يظهر التقدير بعد تسجيل تعبئة بقراءة العداد' + (M.daily ? "" : " وقراءتين للعداد في يومين مختلفين") + '.</p></div>';
+      var low = nx.pct <= 15, word = nx.days === 0 ? "اليوم" : nx.days === 1 ? "غداً" : null;
+      h += '<button type="button" class="card" data-det="next"><div class="rw"><span class="mu">التعبئة القادمة تقريباً</span><span class="chip' + (nx.over ? " w" : "") + '">' + (nx.over ? "من الاحتياطي" : "تقديري") + '</span></div>' +
+        (nx.days != null ? (word ? '<div class="big' + (low ? " w" : "") + '"><b>' + word + '</b><span class="dt">' + esc(nx.over ? "أو غداً صباحاً" : dLong(nx.date)) + '</span></div>' : '<div class="big' + (low ? " w" : "") + '"><b>' + nx.days + '</b><span>' + (nx.days === 2 ? "يومان" : nx.days > 10 ? "يوماً" : "أيام") + '</span><span class="dt">' + esc(dLong(nx.date)) + '</span></div>') : '<div class="big' + (low ? " w" : "") + '"><b>' + n0(nx.rem) + '</b><span>كم باقية</span></div>') +
+        '<div class="pb' + (low ? " w" : "") + '"><i data-w="' + nx.pct + '"></i></div>' + (nx.over ? '<div class="rw mu"><span>تجاوزت التقدير بـ <b>' + n0(nx.extra) + '</b> كم؛ الباقي من احتياطي الخزان</span></div>' : '<div class="rw mu"><span>في الخزان نحو <b>' + n0(nx.pct) + '%</b></span><span>يكفي <b>' + n0(nx.rem) + '</b> كم</span></div>') +
+        (nx.stale ? '<div class="rw mu"><span>آخر قراءة للعداد ' + esc(dShort(nx.anchor)) + '؛ سجّل العداد ليتحدّث التقدير</span></div>' : '') + lastNote + '</button>';
+    } else h += '<div class="card"><span class="mu">التعبئة القادمة</span><p class="sub">يظهر التقدير بعد تسجيل تعبئة بقراءة العداد' + (M.daily ? "" : " وقراءتين للعداد في يومين مختلفين") + '.</p>' + lastNote + '</div>';
     var ym = todayS().slice(0,7), a = M.month(ym), b = M.month(prevYm(ym)), kd = "", kc = "";
     if (M.kmlLast && M.kmlAll && M.iv.length > 1){ var df = M.kmlLast - M.kmlAll; kd = Math.abs(df) < 0.15 ? "مثل معدلك " + n1(M.kmlAll) : (df > 0 ? "أفضل من معدلك " : "أقل من معدلك ") + n1(M.kmlAll); kc = df > 0.15 ? "g" : df < -0.15 ? "w" : ""; }
     else if (M.kmlSrc === "dash" && M.kml) kd = "من قراءة شاشة السيارة";
@@ -1819,9 +1831,9 @@ msPush();
     h += '<div class="g2">' + stat("الاستهلاك", M.kml ? n1(M.kml) : "—", "كم/لتر", kd, kc) + stat("تكلفة الكيلومتر", M.perKm ? n2(M.perKm) : "—", "ريال/كم", M.perKm ? "بنزين فقط" : "") + '</div>' +
       '<div class="g2">' + stat("مصروف " + mShort(ym), n0(a.total), "ريال", md, mc) + stat("ممشى " + mShort(ym), a.km != null ? n0(a.km) : "—", "كم", M.daily ? n0(M.daily) + " كم يومياً" : (a.from ? "منذ " + dShort(a.from) : "")) + '</div>';
     var nxt = M.items.filter(function(o){ return o.last && o.st !== "none"; }).sort(function(x, y){ return (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); })[0];
-    if (nxt){ var w = nxt.st !== "ok"; h += '<button type="button" class="card" data-go="mnt"><div class="rw"><span class="sq' + (w ? " w" : "") + '">' + ico(I.tool, 20) + '</span><span class="tx"><b>' + esc(nxt.name) + '</b><small>' + esc(mntSub(nxt).split(" · ").slice(0, 2).join(" · ")) + '</small></span>' + ico(I.chev, 18) + '</div><div class="pb' + (w ? " w" : " g") + '"><i data-w="' + nxt.pct + '"></i></div></button>'; }
+    if (nxt){ var w = nxt.st !== "ok"; h += '<button type="button" class="card" data-go="mnt"><div class="rw"><span class="sq' + (w ? " w" : "") + '">' + ico(I.tool, 20) + '</span><span class="tx"><b>' + esc(nxt.name) + '</b><small>' + esc(mntSub(nxt).split(" · ").slice(0, 2).join(" · ")) + '</small>' + odoLine(nxt, M) + '</span>' + ico(I.chev, 18) + '</div><div class="pb' + (w ? " w" : " g") + '"><i data-w="' + nxt.pct + '"></i></div></button>'; }
     if (lsGet("masroof-v1")) tail = '<button type="button" class="btn" data-exp="1">مصروف البيت: بياناتك محفوظة · فتح</button>';
-    if (M.lastF) h += '<p class="note">آخر تعبئة: ' + esc(dShort(M.lastF.ts)) + ' · ' + n0(M.lastF.amount) + ' ريال' + (M.lastF.L ? ' · ' + n1(M.lastF.L) + ' لتراً' : '') + '</p>';
+    /* ملاحظة آخر تعبئة صارت داخل بطاقة التعبئة القادمة */
     return h + tail;
   }
   function logRows(M){
@@ -1844,7 +1856,7 @@ msPush();
     var h = '<div><h1>الصيانة</h1><p class="sub">ما حان وما اقترب، بالكيلومتر والتاريخ</p></div>';
     var rank = {due:0, near:1, ok:2, none:3}, list = M.items.slice().sort(function(x, y){ return rank[x.st] - rank[y.st] || (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); });
     var known = list.filter(function(o){ return o.last; }), unk = list.filter(function(o){ return !o.last; });
-    if (known.length) h += '<div class="card"><div>' + known.map(function(o){ var c = ST[o.st]; return '<div class="mi"><div class="rw"><span class="tx"><b>' + esc(o.name) + '</b><small>' + esc(mntSub(o)) + '</small></span><span class="chip ' + c[1] + '">' + c[0] + '</span></div><div class="pb ' + (o.st === "ok" ? "g" : "w") + '"><i data-w="' + o.pct + '"></i></div></div>'; }).join("") + '</div></div>';
+    if (known.length) h += '<div class="card"><div>' + known.map(function(o){ var c = ST[o.st]; return '<div class="mi"><div class="rw"><span class="tx"><b>' + esc(o.name) + '</b><small>' + esc(mntSub(o)) + '</small>' + odoLine(o, M) + '</span><span class="chip ' + c[1] + '">' + c[0] + '</span></div><div class="pb ' + (o.st === "ok" ? "g" : "w") + '"><i data-w="' + o.pct + '"></i></div></div>'; }).join("") + '</div></div>';
     else h += '<div class="card"><p class="sub">لم تُسجَّل أي صيانة بعد. سجّل آخر تغيير زيت مثلاً ليبدأ حساب الموعد القادم.</p></div>';
     var y = todayS().slice(0,4), yc = 0; M.svcs.forEach(function(s){ if (String(s.ts).slice(0,4) === y) yc += num(s.cost) || 0; });
     var first = M.pts.length ? M.pts[0] : null, yKm = first ? Math.max(0, M.top - M.odoAt(Math.max(first.t, new Date(Number(y), 0, 1, 12).getTime()))) : 0;
@@ -1907,8 +1919,16 @@ msPush();
     if (b.dataset.sp != null && b.dataset.sp !== ""){ statP = Number(b.dataset.sp); draw(); return; }
     if (b.dataset.open === "mnt"){ var prev = cur; S.show("car"); try { $("mnt-open").click(); } catch(e){} back(prev); return; }
     if (b.dataset.det === "next" && M.next){ var nx = M.next, f = M.lastF;
-      showDet("تقدير التعبئة القادمة", [["آخر تعبئة", dShort(f.ts) + " · " + n0(f.amount) + " ريال"], ["العداد عند التعبئة", n0(f.odo) + " كم"], ["العداد الآن", n0(M.top) + " كم" + (M.topDay ? " (" + dShort(M.topDay) + ")" : "")], ["مشيت منذ التعبئة", n0(nx.since) + " كم"],
-        ["مدى التعبئة", n0(nx.range) + " كم" + (nx.fromDash ? " (قراءة السيارة)" : " (لترات × الاستهلاك)")], ["الباقي تقريباً", n0(nx.rem) + " كم"], ["ممشاك اليومي", M.daily ? n0(M.daily) + " كم (آخر 14 يوماً)" : "غير معروف بعد"], ["التعبئة القادمة", nx.date ? dLong(nx.date) + " · بعد " + days(nx.days) : "تحتاج قراءات عداد أكثر"]], false); return; }
+      showDet("كيف حُسبت التعبئة القادمة", [
+        ["١) متوسط الاستهلاك", M.kmlAll ? n1(M.kmlAll) + " كم/لتر" + (M.kmlSrc === "dash" ? " (شاشة السيارة)" : " (كل التعبئات)") : ""],
+        ["٢) مدى آخر تعبئة", nx.fromDash ? n0(nx.range) + " كم (قراءة السيارة)" : (f.L ? n1(f.L) + " لتر × " + n1(M.kmlAll) + " = " + n0(nx.range) + " كم" : n0(nx.range) + " كم")],
+        ["٣) مشيت منذ التعبئة", n0(M.top) + " − " + n0(f.odo) + " = " + n0(nx.since) + " كم"],
+        ["٤) الباقي", nx.over ? "صفر (تجاوزت التقدير بـ " + n0(nx.extra) + " كم)" : n0(nx.range) + " − " + n0(nx.since) + " = " + n0(nx.rem) + " كم"],
+        ["٥) متوسط ممشاك اليومي", M.daily ? n0(M.dailyKm) + " كم ÷ " + M.dailyDays + " يوماً = " + n0(M.daily) + " كم" : "غير معروف بعد"],
+        ["٦) الأيام الباقية", M.daily ? n0(nx.rem) + " ÷ " + n0(M.daily) + " = " + n1(nx.rem / M.daily) + " يوم من " + dShort(nx.anchor) : ""],
+        ["الموعد التقديري", nx.date ? (nx.days === 0 ? "اليوم" + (nx.over ? " أو غداً صباحاً" : "") : nx.days === 1 ? "غداً · " + dLong(nx.date) : dLong(nx.date) + " · بعد " + days(nx.days)) : "تحتاج قراءتين للعداد في يومين مختلفين"],
+        ["التعبئة كاملةً تكفي", nx.lasts ? "نحو " + days(nx.lasts) : ""],
+        ["ملاحظة", nx.over ? "التقدير لا يحسب ما كان في الخزان قبل التعبئة، لذلك قد يبقى بنزين بعد انتهائه." : "التقدير يتحسن كلما زادت التعبئات وقراءات العداد المسجّلة."]], false); return; }
     if (b.dataset.row){ var p = b.dataset.row.split(":"), r = logRows(M).filter(function(x){ return x.k === p[0] && x.id === p.slice(1).join(":"); })[0]; if (!r) return;
       if (r.k === "f"){ var f2 = r.f, iv = r.iv; showDet("تعبئة " + dShort(r.d), [["المبلغ", n2(r.a) + " ريال"], ["النوع وسعر اللتر", (f2.type ? "بنزين " + f2.type + " · " : "") + (num(f2.price) ? n2(f2.price) + " ريال" : "")], ["اللترات", f2.L ? n1(f2.L) + " لتر" : ""], ["العداد", num(f2.odo) != null ? n0(f2.odo) + " كم" : ""],
           ["المسافة منذ التعبئة السابقة", iv ? n0(iv.dist) + " كم" : ""], ["استهلاك تلك المسافة", iv && iv.kml ? n1(iv.kml) + " كم/لتر" : ""], ["قراءة شاشة السيارة", num(f2.avg) > 0 ? n1(f2.avg) + " " + (String(f2.avgUnit || "").indexOf("km/l") === 0 ? "كم/لتر" : "لتر/100 كم") : ""], ["المدى بعد التعبئة", num(f2.range) > 0 ? n0(f2.range) + " كم" : ""]], true); }
