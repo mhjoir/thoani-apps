@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "73";
+var VERSION = "74";
 /* وضع التطبيق: fuel = دفتر البنزين (السيارة فقط)، budget = دفتر المصروف (مصروف البيت). يحدّده البناء. */
 var APP_MODE = "fuel";
 /* خادم النسخ الاحتياطي واحد للتطبيقين حتى تبقى البيانات نفسها */
@@ -1754,7 +1754,7 @@ msPush();
     "#v3 .mi{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--l)}#v3 .mi:last-child{border-bottom:0;padding-bottom:0}#v3 .mi:first-child{padding-top:0}" +
     "#v3 .bars{display:flex;align-items:flex-end;gap:10px;height:128px}#v3 .bars div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;min-width:0}#v3 .bars i{display:block;width:100%;border-radius:8px 8px 3px 3px;background:var(--a2);min-height:2px}#v3 .bars .on i{background:var(--a)}#v3 .bars span{font-size:11.5px;color:var(--m);font-variant-numeric:tabular-nums;white-space:nowrap}#v3 .bars .on span:first-child{color:var(--i);font-weight:700}" +
     "#v3 .btn{display:block;text-align:center;padding:14px;border-radius:14px;background:var(--s);border:1px solid var(--l);color:var(--a);font:inherit;font-weight:700;cursor:pointer;width:100%}" +
-    "#v3 .note{margin:0;text-align:center;color:var(--m);font-size:13px}#v3 .ln{border-top:1px solid var(--l);padding-top:10px;color:var(--m);font-size:13.5px}" +
+    "#v3 .note{margin:0;text-align:center;color:var(--m);font-size:13px}#v3 .ln{border-top:1px solid var(--l);padding-top:10px;color:var(--m);font-size:13px}#v3 .sm{color:var(--m);font-size:12.5px}" +
     "#v3-nav{position:fixed;left:0;right:0;bottom:0;z-index:7;height:calc(72px + env(safe-area-inset-bottom));padding:0 6px env(safe-area-inset-bottom);box-sizing:border-box;background:var(--s);border-top:1px solid var(--l);display:grid;grid-template-columns:1fr 1fr 76px 1fr 1fr;align-items:center}" +
     "#v3-nav button{font:inherit;border:0;background:transparent;color:var(--m);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;min-height:52px;cursor:pointer}" +
     "#v3-nav button[aria-current=page]{color:var(--a);font-weight:700}" +
@@ -1818,11 +1818,14 @@ msPush();
     if (!M.car || (!M.fills.length && M.top == null)) return h + '<div class="card"><b>ابدأ بأول تعبئة</b><p class="sub">اضغط زر الإضافة وسجّل قراءة العداد ومبلغ التعبئة، وتظهر هنا التقديرات والإحصائيات.</p></div>';
     var nx = M.next, lastNote = M.lastF ? '<div class="ln">آخر تعبئة: ' + esc(dShort(M.lastF.ts)) + ' · ' + n0(M.lastF.amount) + ' ريال' + (M.lastF.L ? ' · ' + n1(M.lastF.L) + ' لتراً' : '') + '</div>' : '';
     if (nx && nx.range){
-      var low = nx.pct <= 15, word = nx.days === 0 ? "اليوم" : nx.days === 1 ? "غداً" : null;
-      h += '<button type="button" class="card" data-det="next"><div class="rw"><span class="mu">التعبئة القادمة تقريباً</span><span class="chip' + (nx.over ? " w" : "") + '">' + (nx.over ? "من الاحتياطي" : "تقديري") + '</span></div>' +
-        (nx.days != null ? (word ? '<div class="big' + (low ? " w" : "") + '"><b>' + word + '</b><span class="dt">' + esc(nx.over ? "أو غداً صباحاً" : dLong(nx.date)) + '</span></div>' : '<div class="big' + (low ? " w" : "") + '"><b>' + nx.days + '</b><span>' + (nx.days === 2 ? "يومان" : nx.days > 10 ? "يوماً" : "أيام") + '</span><span class="dt">' + esc(dLong(nx.date)) + '</span></div>') : '<div class="big' + (low ? " w" : "") + '"><b>' + n0(nx.rem) + '</b><span>كم باقية</span></div>') +
-        '<div class="pb' + (low ? " w" : "") + '"><i data-w="' + nx.pct + '"></i></div>' + (nx.over ? '<div class="rw mu"><span>تجاوزت التقدير بـ <b>' + n0(nx.extra) + '</b> كم؛ الباقي من احتياطي الخزان</span></div>' : '<div class="rw mu"><span>في الخزان نحو <b>' + n0(nx.pct) + '%</b></span><span>يكفي <b>' + n0(nx.rem) + '</b> كم</span></div>') +
-        (nx.stale ? '<div class="rw mu"><span>آخر قراءة للعداد ' + esc(dShort(nx.anchor)) + '؛ سجّل العداد ليتحدّث التقدير</span></div>' : '') + lastNote + '</button>';
+      /* الأساس هو الكيلومترات الباقية؛ الوقت المتوقع ملاحظة صغيرة تحتها */
+      var low = nx.pct <= 15, when = nx.over ? "" : nx.days == null ? "" : "الوقت المتوقع: " + (nx.days === 0 ? "خلال اليوم" : "بعد نحو " + days(nx.days) + " · " + dLong(nx.date));
+      h += '<button type="button" class="card" data-det="next"><div class="rw"><span class="mu">الباقي حتى التعبئة القادمة</span><span class="chip' + (nx.over ? " w" : "") + '">' + (nx.over ? "من الاحتياطي" : "تقديري") + '</span></div>' +
+        '<div class="big' + (low ? " w" : "") + '"><b>' + n0(nx.rem) + '</b><span>كم</span></div>' +
+        '<div class="pb' + (low ? " w" : "") + '"><i data-w="' + nx.pct + '"></i></div>' +
+        (nx.over ? '<div class="rw mu"><span>تجاوزت التقدير بـ <b>' + n0(nx.extra) + '</b> كم؛ الباقي من احتياطي الخزان</span></div>' : '<div class="rw mu"><span>في الخزان نحو <b>' + n0(nx.pct) + '%</b></span><span>مشيت <b>' + n0(nx.since) + '</b> من <b>' + n0(nx.range) + '</b> كم</span></div>') +
+        (when ? '<div class="sm">' + esc(when) + '</div>' : '') +
+        (nx.stale ? '<div class="sm">آخر قراءة للعداد ' + esc(dShort(nx.anchor)) + '؛ سجّل العداد ليتحدّث التقدير</div>' : '') + lastNote + '</button>';
     } else h += '<div class="card"><span class="mu">التعبئة القادمة</span><p class="sub">يظهر التقدير بعد تسجيل تعبئة بقراءة العداد' + (M.daily ? "" : " وقراءتين للعداد في يومين مختلفين") + '.</p>' + lastNote + '</div>';
     var ym = todayS().slice(0,7), a = M.month(ym), b = M.month(prevYm(ym)), kd = "", kc = "";
     if (M.kmlLast && M.kmlAll && M.iv.length > 1){ var df = M.kmlLast - M.kmlAll; kd = Math.abs(df) < 0.15 ? "مثل معدلك " + n1(M.kmlAll) : (df > 0 ? "أفضل من معدلك " : "أقل من معدلك ") + n1(M.kmlAll); kc = df > 0.15 ? "g" : df < -0.15 ? "w" : ""; }
@@ -1926,7 +1929,7 @@ msPush();
         ["٤) الباقي", nx.over ? "صفر (تجاوزت التقدير بـ " + n0(nx.extra) + " كم)" : n0(nx.range) + " − " + n0(nx.since) + " = " + n0(nx.rem) + " كم"],
         ["٥) متوسط ممشاك اليومي", M.daily ? n0(M.dailyKm) + " كم ÷ " + M.dailyDays + " يوماً = " + n0(M.daily) + " كم" : "غير معروف بعد"],
         ["٦) الأيام الباقية", M.daily ? n0(nx.rem) + " ÷ " + n0(M.daily) + " = " + n1(nx.rem / M.daily) + " يوم من " + dShort(nx.anchor) : ""],
-        ["الموعد التقديري", nx.date ? (nx.days === 0 ? "اليوم" + (nx.over ? " أو غداً صباحاً" : "") : nx.days === 1 ? "غداً · " + dLong(nx.date) : dLong(nx.date) + " · بعد " + days(nx.days)) : "تحتاج قراءتين للعداد في يومين مختلفين"],
+        ["الوقت المتوقع", nx.over ? "" : nx.date ? (nx.days === 0 ? "خلال اليوم" : "بعد نحو " + days(nx.days) + " · " + dLong(nx.date)) : "تحتاج قراءتين للعداد في يومين مختلفين"],
         ["التعبئة كاملةً تكفي", nx.lasts ? "نحو " + days(nx.lasts) : ""],
         ["ملاحظة", nx.over ? "التقدير لا يحسب ما كان في الخزان قبل التعبئة، لذلك قد يبقى بنزين بعد انتهائه." : "التقدير يتحسن كلما زادت التعبئات وقراءات العداد المسجّلة."]], false); return; }
     if (b.dataset.row){ var p = b.dataset.row.split(":"), r = logRows(M).filter(function(x){ return x.k === p[0] && x.id === p.slice(1).join(":"); })[0]; if (!r) return;
