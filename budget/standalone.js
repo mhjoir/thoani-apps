@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "74";
+var VERSION = "75";
 /* وضع التطبيق: fuel = دفتر البنزين (السيارة فقط)، budget = دفتر المصروف (مصروف البيت). يحدّده البناء. */
 var APP_MODE = "budget";
 /* خادم النسخ الاحتياطي واحد للتطبيقين حتى تبقى البيانات نفسها */
@@ -1835,7 +1835,8 @@ msPush();
       '<div class="g2">' + stat("مصروف " + mShort(ym), n0(a.total), "ريال", md, mc) + stat("ممشى " + mShort(ym), a.km != null ? n0(a.km) : "—", "كم", M.daily ? n0(M.daily) + " كم يومياً" : (a.from ? "منذ " + dShort(a.from) : "")) + '</div>';
     var nxt = M.items.filter(function(o){ return o.last && o.st !== "none"; }).sort(function(x, y){ return (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); })[0];
     if (nxt){ var w = nxt.st !== "ok"; h += '<button type="button" class="card" data-go="mnt"><div class="rw"><span class="sq' + (w ? " w" : "") + '">' + ico(I.tool, 20) + '</span><span class="tx"><b>' + esc(nxt.name) + '</b><small>' + esc(mntSub(nxt).split(" · ").slice(0, 2).join(" · ")) + '</small>' + odoLine(nxt, M) + '</span>' + ico(I.chev, 18) + '</div><div class="pb' + (w ? " w" : " g") + '"><i data-w="' + nxt.pct + '"></i></div></button>'; }
-    if (lsGet("masroof-v1")) tail = '<button type="button" class="btn" data-exp="1">مصروف البيت: بياناتك محفوظة · فتح</button>';
+    if (badgeOk() && badgePerm() === "default") tail += '<button type="button" class="btn" data-badge="1">تفعيل الرقم على أيقونة التطبيق عند أقل من 50 كم</button>';
+    if (lsGet("masroof-v1")) tail += '<button type="button" class="btn" data-exp="1">مصروف البيت: بياناتك محفوظة · فتح</button>';
     /* ملاحظة آخر تعبئة صارت داخل بطاقة التعبئة القادمة */
     return h + tail;
   }
@@ -1889,9 +1890,22 @@ msPush();
       '<div class="g3">' + stat("البنزين", n0(fu), "ريال") + stat("الصيانة", n0(sv), "ريال") + stat("اللترات", n0(L), "لتر") + '</div>';
     return h + '<p class="note">المسافة من قراءات العداد المسجّلة؛ كلما سجّلت العداد أكثر كانت الأرقام أدق.</p>';
   }
+  /* رقم على أيقونة التطبيق: الكيلومترات الباقية عندما تنزل عن 50 كم، ويُزال فوق ذلك.
+     الآيفون يشترط السماح بالإشعارات ليُظهر الرقم، ويُحدَّث الرقم عند فتح التطبيق أو التسجيل فيه. */
+  var BADGE_AT = 50;
+  function badgeOk(){ return typeof navigator.setAppBadge === "function"; }
+  function badgePerm(){ try { return typeof Notification !== "undefined" ? Notification.permission : "none"; } catch(e){ return "none"; } }
+  function badge(M){
+    if (!badgeOk()) return;
+    try {
+      var nx = M.next;
+      if (nx && nx.range && nx.rem < BADGE_AT) navigator.setAppBadge(Math.max(1, Math.round(nx.rem))).catch(function(){});
+      else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(function(){});
+    } catch(e){}
+  }
   var lastM = null;
   function draw(){
-    var M = lastM = model();
+    var M = lastM = model(); badge(M);
     $("v3-in").innerHTML = cur === "log" ? rLog(M) : cur === "mnt" ? rMnt(M) : cur === "stat" ? rStat(M) : rHome(M);
     /* المقاسات تُضبط بالسكربت لأن سياسة أمان الصفحة تمنع الأنماط المضمّنة */
     [].forEach.call(v3.querySelectorAll(".pb i[data-w]"), function(b){ b.style.width = b.dataset.w + "%"; });
@@ -1916,6 +1930,7 @@ msPush();
     var b = ev.target.closest("button"); if (!b) return; var M = lastM || model();
     if (b.dataset.set){ S.show("car"); return; }
     if (b.dataset.exp){ S.show("exp"); return; }
+    if (b.dataset.badge){ try { var pr = Notification.requestPermission(function(){ draw(); }); if (pr && pr.then) pr.then(function(){ draw(); }, function(){}); } catch(e){} return; }
     if (b.dataset.add){ doAdd(b.dataset.add); return; }
     if (b.dataset.go){ go(b.dataset.go); return; }
     if (b.dataset.lf){ logF = b.dataset.lf; draw(); return; }
