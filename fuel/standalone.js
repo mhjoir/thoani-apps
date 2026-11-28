@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "78";
+var VERSION = "79";
 /* وضع التطبيق: fuel = دفتر البنزين (السيارة فقط)، budget = دفتر المصروف (مصروف البيت). يحدّده البناء. */
 var APP_MODE = "fuel";
 /* خادم النسخ الاحتياطي واحد للتطبيقين حتى تبقى البيانات نفسها */
@@ -1845,7 +1845,7 @@ msPush();
       '<div class="g2">' + stat("مصروف " + mShort(ym), n0(a.total), "ريال", md, mc) + stat("ممشى " + mShort(ym), a.km != null ? n0(a.km) : "—", "كم", M.daily ? n0(M.daily) + " كم يومياً" : (a.from ? "منذ " + dShort(a.from) : "")) + '</div>';
     /* التكلفة اليومية: متوسط تراكمي منذ بداية التسجيل = (المسافة × تكلفة الكيلومتر) ÷ عدد الأيام */
     var R = M.run;
-    h += stat("التكلفة اليومية", R && R.perDay != null ? n1(R.perDay) : "—", "ريال/يوم", R && R.perDay != null ? "متوسط منذ " + dShort(R.from) + ": " + n0(R.km) + " كم × " + n2(M.perKm) + " ريال = " + n0(R.cost) + " ريال ÷ " + R.days + " يوماً · بنزين فقط · نحو " + n0(R.perDay * 30) + " ريال شهرياً" + '</span><span class="d">' + "كامل مصروفات السيارة: " + n1(R.allDay) + " ريال/يوم (بنزين " + n0(R.cost) + " + صيانة " + n0(R.svc) + " ÷ " + R.days + " يوماً)" : "تظهر بعد تسجيل قراءتين للعداد ومعرفة الاستهلاك");
+    h += stat("التكلفة اليومية للبنزين", R && R.perDay != null ? n1(R.perDay) : "—", "ريال/يوم", R && R.perDay != null ? "كامل مصروفات السيارة: " + n1(R.allDay) + " ريال/يوم" : "تظهر بعد تسجيل قراءتين للعداد ومعرفة الاستهلاك");
     var nxt = M.items.filter(function(o){ return o.last && o.st !== "none"; }).sort(function(x, y){ return (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); })[0];
     if (nxt){ var w = nxt.st !== "ok"; h += '<button type="button" class="card" data-go="mnt"><div class="rw"><span class="sq' + (w ? " w" : "") + '">' + ico(I.tool, 20) + '</span><span class="tx"><b>' + esc(nxt.name) + '</b><small>' + esc(mntSub(nxt).split(" · ").slice(0, 2).join(" · ")) + '</small>' + odoLine(nxt, M) + '</span>' + ico(I.chev, 18) + '</div><div class="pb' + (w ? " w" : " g") + '"><i data-w="' + nxt.pct + '"></i></div></button>'; }
     if (badgeOk() && badgePerm() === "default") tail += '<button type="button" class="btn" data-badge="1">تفعيل الرقم على أيقونة التطبيق عند أقل من 50 كم</button>';
