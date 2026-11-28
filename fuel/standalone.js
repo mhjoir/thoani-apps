@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "77";
+var VERSION = "78";
 /* وضع التطبيق: fuel = دفتر البنزين (السيارة فقط)، budget = دفتر المصروف (مصروف البيت). يحدّده البناء. */
 var APP_MODE = "fuel";
 /* خادم النسخ الاحتياطي واحد للتطبيقين حتى تبقى البيانات نفسها */
@@ -1697,7 +1697,10 @@ msPush();
     M.run = null;
     var starts = M.fills.map(function(f){ return String(f.ts).slice(0,10); }).concat(car ? (car.odoLog || []).map(function(q){ return String(q.t).slice(0,10); }) : []).filter(function(d){ return /^\d{4}-\d\d-\d\d$/.test(d); }).sort();
     if (starts.length && pts.length > 1){ var st0 = new Date(starts[0] + "T12:00").getTime(), a0 = Math.max(st0, pts[0].t), rd = (pts[pts.length - 1].t - a0) / 864e5;
-      if (rd >= 1){ var rk = Math.max(0, M.top - M.odoAt(a0)); M.run = {from:dS(new Date(a0)), days:Math.round(rd), km:rk, daily:rk / rd, cost:M.perKm ? rk * M.perKm : null, perDay:M.perKm ? rk * M.perKm / rd : null}; } }
+      if (rd >= 1){ var rk = Math.max(0, M.top - M.odoAt(a0)); M.run = {from:dS(new Date(a0)), days:Math.round(rd), km:rk, daily:rk / rd, cost:M.perKm ? rk * M.perKm : null, perDay:M.perKm ? rk * M.perKm / rd : null};
+        /* كامل مصروفات السيارة: البنزين المستهلك + الصيانة المسجّلة في الفترة نفسها */
+        var sv = 0; M.svcs.forEach(function(x){ var t = new Date(String(x.ts).slice(0,10) + "T12:00").getTime(); if (t >= a0) sv += num(x.cost) || 0; });
+        M.run.svc = sv; M.run.allDay = ((M.run.cost || 0) + sv) / rd; } }
     /* التعبئة القادمة:
        المدى = لترات آخر تعبئة × متوسط الاستهلاك (كل التعبئات)، أو قراءة مدى السيارة إن سُجّلت
        الباقي = المدى − ما مُشي منذ التعبئة (حتى آخر قراءة عداد)
@@ -1842,7 +1845,7 @@ msPush();
       '<div class="g2">' + stat("مصروف " + mShort(ym), n0(a.total), "ريال", md, mc) + stat("ممشى " + mShort(ym), a.km != null ? n0(a.km) : "—", "كم", M.daily ? n0(M.daily) + " كم يومياً" : (a.from ? "منذ " + dShort(a.from) : "")) + '</div>';
     /* التكلفة اليومية: متوسط تراكمي منذ بداية التسجيل = (المسافة × تكلفة الكيلومتر) ÷ عدد الأيام */
     var R = M.run;
-    h += stat("التكلفة اليومية", R && R.perDay != null ? n1(R.perDay) : "—", "ريال/يوم", R && R.perDay != null ? "متوسط منذ " + dShort(R.from) + ": " + n0(R.km) + " كم × " + n2(M.perKm) + " ريال = " + n0(R.cost) + " ريال ÷ " + R.days + " يوماً · بنزين فقط · نحو " + n0(R.perDay * 30) + " ريال شهرياً" : "تظهر بعد تسجيل قراءتين للعداد ومعرفة الاستهلاك");
+    h += stat("التكلفة اليومية", R && R.perDay != null ? n1(R.perDay) : "—", "ريال/يوم", R && R.perDay != null ? "متوسط منذ " + dShort(R.from) + ": " + n0(R.km) + " كم × " + n2(M.perKm) + " ريال = " + n0(R.cost) + " ريال ÷ " + R.days + " يوماً · بنزين فقط · نحو " + n0(R.perDay * 30) + " ريال شهرياً" + '</span><span class="d">' + "كامل مصروفات السيارة: " + n1(R.allDay) + " ريال/يوم (بنزين " + n0(R.cost) + " + صيانة " + n0(R.svc) + " ÷ " + R.days + " يوماً)" : "تظهر بعد تسجيل قراءتين للعداد ومعرفة الاستهلاك");
     var nxt = M.items.filter(function(o){ return o.last && o.st !== "none"; }).sort(function(x, y){ return (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); })[0];
     if (nxt){ var w = nxt.st !== "ok"; h += '<button type="button" class="card" data-go="mnt"><div class="rw"><span class="sq' + (w ? " w" : "") + '">' + ico(I.tool, 20) + '</span><span class="tx"><b>' + esc(nxt.name) + '</b><small>' + esc(mntSub(nxt).split(" · ").slice(0, 2).join(" · ")) + '</small>' + odoLine(nxt, M) + '</span>' + ico(I.chev, 18) + '</div><div class="pb' + (w ? " w" : " g") + '"><i data-w="' + nxt.pct + '"></i></div></button>'; }
     if (badgeOk() && badgePerm() === "default") tail += '<button type="button" class="btn" data-badge="1">تفعيل الرقم على أيقونة التطبيق عند أقل من 50 كم</button>';
