@@ -7,7 +7,7 @@ if (window.claude) return;
 
 var DBKEY = "fuelapp-db-v1", APIKEY = "fuelapp-key", MODELKEY = "fuelapp-model", DEF_MODEL = "claude-sonnet-5-5";
 window.__savedLabel = "محفوظ على هذا الجهاز";
-var VERSION = "76";
+var VERSION = "77";
 /* وضع التطبيق: fuel = دفتر البنزين (السيارة فقط)، budget = دفتر المصروف (مصروف البيت). يحدّده البناء. */
 var APP_MODE = "budget";
 /* خادم النسخ الاحتياطي واحد للتطبيقين حتى تبقى البيانات نفسها */
@@ -1682,7 +1682,7 @@ msPush();
     if (pts.length > 1){ var t0 = Math.max(pts[0].t, pts[pts.length - 1].t - 90 * 864e5), span = (pts[pts.length - 1].t - t0) / 864e5; if (span >= 1){ M.dailyKm = Math.max(0, M.top - M.odoAt(t0)); M.dailyDays = Math.round(span); M.daily = M.dailyKm / span; } }
     /* الاستهلاك: لترات كل تعبئة تُحسب على المسافة حتى التعبئة التي بعدها */
     var fo = M.fills.filter(function(f){ return num(f.odo) != null; }); M.iv = [];
-    for (var i = 1; i < fo.length; i++){ var dist = Number(fo[i].odo) - Number(fo[i - 1].odo), L = fo[i - 1].L; if (dist > 0) M.iv.push({d:String(fo[i].ts).slice(0,10), dist:dist, L:L, kml:L > 0 ? dist / L : null, id:fo[i].id}); }
+    for (var i = 1; i < fo.length; i++){ var dist = Number(fo[i].odo) - Number(fo[i - 1].odo), L = fo[i - 1].L; if (dist > 0) M.iv.push({d:String(fo[i].ts).slice(0,10), dist:dist, amt:num(fo[i - 1].amount) || 0, L:L, kml:L > 0 ? dist / L : null, id:fo[i].id}); }
     var okIv = M.iv.filter(function(x){ return x.kml > 0; }), sd = 0, sl = 0; okIv.forEach(function(x){ sd += x.dist; sl += x.L; });
     M.kmlAll = sl > 0 ? sd / sl : null; M.kmlLast = okIv.length ? okIv[okIv.length - 1].kml : null; M.kmlSrc = "calc";
     M.lastF = fo.length ? fo[fo.length - 1] : (M.fills.length ? M.fills[M.fills.length - 1] : null);
@@ -1691,6 +1691,13 @@ msPush();
     M.kml = M.kmlLast || M.kmlAll;
     M.price = M.lastF && num(M.lastF.price) > 0 ? Number(M.lastF.price) : null;
     M.perKm = M.price && M.kmlAll ? M.price / M.kmlAll : null;
+    /* تكلفة الكيلومتر التراكمية: مجموع مبالغ التعبئات المستهلكة ÷ مجموع المسافات بينها (كل التعبئات لا آخرها فقط) */
+    var ca = 0, cd = 0; M.iv.forEach(function(x){ if (x.amt > 0){ ca += x.amt; cd += x.dist; } }); if (cd > 0) M.perKm = ca / cd;
+    /* المتوسط التراكمي منذ بداية التسجيل (أول تعبئة أو أول قراءة عداد): المسافة ÷ الأيام، ثم × تكلفة الكيلومتر */
+    M.run = null;
+    var starts = M.fills.map(function(f){ return String(f.ts).slice(0,10); }).concat(car ? (car.odoLog || []).map(function(q){ return String(q.t).slice(0,10); }) : []).filter(function(d){ return /^\d{4}-\d\d-\d\d$/.test(d); }).sort();
+    if (starts.length && pts.length > 1){ var st0 = new Date(starts[0] + "T12:00").getTime(), a0 = Math.max(st0, pts[0].t), rd = (pts[pts.length - 1].t - a0) / 864e5;
+      if (rd >= 1){ var rk = Math.max(0, M.top - M.odoAt(a0)); M.run = {from:dS(new Date(a0)), days:Math.round(rd), km:rk, daily:rk / rd, cost:M.perKm ? rk * M.perKm : null, perDay:M.perKm ? rk * M.perKm / rd : null}; } }
     /* التعبئة القادمة:
        المدى = لترات آخر تعبئة × متوسط الاستهلاك (كل التعبئات)، أو قراءة مدى السيارة إن سُجّلت
        الباقي = المدى − ما مُشي منذ التعبئة (حتى آخر قراءة عداد)
@@ -1831,11 +1838,11 @@ msPush();
     if (M.kmlLast && M.kmlAll && M.iv.length > 1){ var df = M.kmlLast - M.kmlAll; kd = Math.abs(df) < 0.15 ? "مثل معدلك " + n1(M.kmlAll) : (df > 0 ? "أفضل من معدلك " : "أقل من معدلك ") + n1(M.kmlAll); kc = df > 0.15 ? "g" : df < -0.15 ? "w" : ""; }
     else if (M.kmlSrc === "dash" && M.kml) kd = "من قراءة شاشة السيارة";
     var md = "", mc = ""; if (b.total > 0 && a.total > 0){ var pc = Math.round((a.total - b.total) / b.total * 100); md = pc === 0 ? "مثل " + mShort(prevYm(ym)) : (pc < 0 ? "أقل " : "أكثر ") + Math.abs(pc) + "% من " + mShort(prevYm(ym)); mc = pc < 0 ? "g" : pc > 0 ? "w" : ""; } else if (a.n) md = a.n + (a.n === 1 ? " تعبئة" : a.n === 2 ? " تعبئتان" : " تعبئات");
-    h += '<div class="g2">' + stat("الاستهلاك", M.kml ? n1(M.kml) : "—", "كم/لتر", kd, kc) + stat("تكلفة الكيلومتر", M.perKm ? n2(M.perKm) : "—", "ريال/كم", M.perKm ? "بنزين فقط" : "") + '</div>' +
+    h += '<div class="g2">' + stat("الاستهلاك", M.kml ? n1(M.kml) : "—", "كم/لتر", kd, kc) + stat("تكلفة الكيلومتر", M.perKm ? n2(M.perKm) : "—", "ريال/كم", M.perKm ? (M.iv.length ? "متوسط كل التعبئات" : "بنزين فقط") : "") + '</div>' +
       '<div class="g2">' + stat("مصروف " + mShort(ym), n0(a.total), "ريال", md, mc) + stat("ممشى " + mShort(ym), a.km != null ? n0(a.km) : "—", "كم", M.daily ? n0(M.daily) + " كم يومياً" : (a.from ? "منذ " + dShort(a.from) : "")) + '</div>';
-    /* التكلفة اليومية = متوسط الممشى اليومي × تكلفة الكيلومتر (بنزين) */
-    var dc = M.daily > 0 && M.perKm ? M.daily * M.perKm : null;
-    h += stat("التكلفة اليومية", dc != null ? n1(dc) : "—", "ريال/يوم", dc != null ? n0(M.daily) + " كم يومياً × " + n2(M.perKm) + " ريال للكيلومتر · بنزين فقط · نحو " + n0(dc * 30) + " ريال شهرياً" : "تظهر بعد تسجيل قراءتين للعداد ومعرفة الاستهلاك");
+    /* التكلفة اليومية: متوسط تراكمي منذ بداية التسجيل = (المسافة × تكلفة الكيلومتر) ÷ عدد الأيام */
+    var R = M.run;
+    h += stat("التكلفة اليومية", R && R.perDay != null ? n1(R.perDay) : "—", "ريال/يوم", R && R.perDay != null ? "متوسط منذ " + dShort(R.from) + ": " + n0(R.km) + " كم × " + n2(M.perKm) + " ريال = " + n0(R.cost) + " ريال ÷ " + R.days + " يوماً · بنزين فقط · نحو " + n0(R.perDay * 30) + " ريال شهرياً" : "تظهر بعد تسجيل قراءتين للعداد ومعرفة الاستهلاك");
     var nxt = M.items.filter(function(o){ return o.last && o.st !== "none"; }).sort(function(x, y){ return (x.estDays == null ? 1e9 : x.estDays) - (y.estDays == null ? 1e9 : y.estDays); })[0];
     if (nxt){ var w = nxt.st !== "ok"; h += '<button type="button" class="card" data-go="mnt"><div class="rw"><span class="sq' + (w ? " w" : "") + '">' + ico(I.tool, 20) + '</span><span class="tx"><b>' + esc(nxt.name) + '</b><small>' + esc(mntSub(nxt).split(" · ").slice(0, 2).join(" · ")) + '</small>' + odoLine(nxt, M) + '</span>' + ico(I.chev, 18) + '</div><div class="pb' + (w ? " w" : " g") + '"><i data-w="' + nxt.pct + '"></i></div></button>'; }
     if (badgeOk() && badgePerm() === "default") tail += '<button type="button" class="btn" data-badge="1">تفعيل الرقم على أيقونة التطبيق عند أقل من 50 كم</button>';
